@@ -485,10 +485,101 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
   background: var(--mantle);
   border: 1px solid var(--surface0);
   border-radius: 8px;
-  padding: 16px;
-  margin: 16px 0;
+  padding: 20px 16px;
+  margin: 20px 0;
   text-align: center;
   overflow-x: auto;
+  overflow-y: hidden;
+}
+/* Mermaid가 SVG에 인라인 max-width를 박는 것을 무효화 — 글자 잘림 방지 */
+.mermaid svg {
+  max-width: none !important;
+  width: auto !important;
+  height: auto !important;
+  display: inline-block;
+}
+/* 노드 라벨의 한글이 SVG에서 잘리는 것 방지 (foreignObject HTML 라벨 기준) */
+.mermaid .nodeLabel,
+.mermaid .edgeLabel,
+.mermaid .messageText,
+.mermaid .actor,
+.mermaid .noteText,
+.mermaid .label,
+.mermaid text,
+.mermaid foreignObject div,
+.mermaid foreignObject span,
+.mermaid foreignObject p {
+  font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo",
+               "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+/* foreignObject overflow visible — 노드 폭 측정 시 잘림 방지 */
+.mermaid foreignObject {
+  overflow: visible !important;
+}
+.mermaid foreignObject > div {
+  overflow: visible !important;
+  white-space: nowrap;
+}
+
+/* === Custom Step Chain (단순 순차 flowchart 대체 — Mermaid 노드 폭 한계 회피) === */
+.step-chain {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  margin: 28px 0;
+  padding: 24px 12px;
+  background: var(--mantle);
+  border: 1px solid var(--surface0);
+  border-radius: 10px;
+}
+.step-chain .step {
+  background: var(--surface0);
+  border: 1.5px solid var(--mauve);
+  border-radius: 10px;
+  padding: 12px 26px;
+  font-size: 0.96rem;
+  color: var(--text);
+  min-width: 300px;
+  text-align: left;
+  position: relative;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.step-chain .step .num {
+  font-family: "JetBrains Mono", "Fira Code", "D2Coding", "Consolas", monospace;
+  font-size: 0.74rem;
+  background: var(--mauve);
+  color: var(--base);
+  padding: 3px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.step-chain .step .name {
+  flex: 1;
+}
+.step-chain .step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 16px;
+  background: var(--overlay1);
+}
+.step-chain .step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--overlay1);
 }
 
 /* ====== Images ====== */

@@ -169,10 +169,69 @@ sequenceDiagram
 
 <script type="module">
   import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
   window.__mermaidInit = function (theme) {
     const t = theme === 'mocha' ? 'dark' : 'default';
-    mermaid.initialize({ startOnLoad: false, theme: t, securityLevel: 'loose',
-      themeVariables: { fontFamily: 'inherit' } });
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: t,
+      securityLevel: 'loose',
+      fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT,
+        fontSize: '15px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#cba6f7' : '#8839ef',
+        lineColor: theme === 'mocha' ? '#bac2de' : '#5c5f77',
+        secondaryColor: theme === 'mocha' ? '#45475a' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#181825' : '#eff1f5',
+        actorBkg: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        actorBorder: theme === 'mocha' ? '#cba6f7' : '#8839ef',
+        actorTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        actorLineColor: theme === 'mocha' ? '#bac2de' : '#5c5f77',
+        signalColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        signalTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        labelBoxBkgColor: theme === 'mocha' ? '#45475a' : '#dce0e8',
+        labelBoxBorderColor: theme === 'mocha' ? '#cba6f7' : '#8839ef',
+        labelTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        loopTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        activationBkgColor: theme === 'mocha' ? '#45475a' : '#dce0e8',
+        activationBorderColor: theme === 'mocha' ? '#cba6f7' : '#8839ef',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: theme === 'mocha' ? '#f9e2af' : '#df8e1d'
+      },
+      flowchart: {
+        htmlLabels: true,
+        useMaxWidth: false,
+        nodeSpacing: 70,
+        rankSpacing: 90,
+        padding: 22,
+        curve: 'basis'
+      },
+      sequence: {
+        useMaxWidth: false,
+        actorFontFamily: KFONT,
+        messageFontFamily: KFONT,
+        noteFontFamily: KFONT,
+        actorFontSize: 15,
+        messageFontSize: 14,
+        noteFontSize: 14,
+        boxMargin: 14,
+        actorMargin: 100,
+        width: 240,
+        wrap: true,
+        wrapPadding: 18,
+        labelBoxWidth: 80,
+        messageMargin: 50,
+        bottomMarginAdj: 8
+      },
+      state: {
+        useMaxWidth: false,
+        padding: 14
+      }
+    });
     document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
     mermaid.run({ querySelector: '.mermaid' });
   };
