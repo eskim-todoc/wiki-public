@@ -81,56 +81,64 @@
 
   <h2 id="features">핵심 가치</h2>
   <div class="card-grid">
-    <div class="card">
+    <div class="card card-reconnect">
+      <div class="card-icon"></div>
       <div class="card-title">자동 재연결</div>
       <div class="card-body">
         연결 실패·타겟 전원 OFF 상태에서도 <strong>100 ms 간격</strong>으로 무한 재시도.
         같은 사유 반복 시 30초마다 1회만 요약 출력해 로그 도배 방지.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-log">
+      <div class="card-icon"></div>
       <div class="card-title">초기 로그 확보</div>
       <div class="card-body">
         Sound1의 고정 RTT Control Block 주소 <code>0x20000000</code>으로 직접 진입.
         부트로더 초기 메시지부터 한 줄도 놓치지 않음.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-output">
+      <div class="card-icon"></div>
       <div class="card-title">다중 출력</div>
       <div class="card-body">
         터미널 stdout · 로그 파일(append) · Telnet 서버(<code>127.0.0.1:19021</code>)
         세 경로에 동시 fan-out. 모든 라인 누락 없이 보존.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-input">
+      <div class="card-icon"></div>
       <div class="card-title">양방향 RTT</div>
       <div class="card-body">
         VSCode 터미널 stdin과 TeraTerm Telnet 클라이언트 입력을
         타겟 RTT down channel로 전달. 펌웨어 콘솔 명령 실행 가능.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-sn">
+      <div class="card-icon"></div>
       <div class="card-title">SN 세션 기억</div>
       <div class="card-body">
         J-Link 프로브가 여러 개여도 첫 선택 후 SN을 프로세스 메모리에 기억.
         재연결 시 선택 창 없이 같은 프로브로 자동 복귀.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-cb">
+      <div class="card-icon"></div>
       <div class="card-title">CB 변경 자동 감지</div>
       <div class="card-body">
         부트로더→앱 전환 등으로 RTT Control Block이 재구성되면
         100 ms 주기 감시로 감지 → 자동 <code>rtt_start</code> 재호출로 캐시 refresh.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-yaml">
+      <div class="card-icon"></div>
       <div class="card-title">YAML 프로파일</div>
       <div class="card-body">
         Sound1 기본 프로파일 내장 + 다른 MCU도 YAML 한 장 추가로 재사용.
         모든 옵션은 CLI 인자로 오버라이드 가능.
       </div>
     </div>
-    <div class="card">
+    <div class="card card-spam">
+      <div class="card-icon"></div>
       <div class="card-title">스팸 억제</div>
       <div class="card-body">
         같은 사유로 연속 실패 시 첫 줄만 출력 → 30초마다 요약 1회.
@@ -189,22 +197,22 @@ auto-rtt-viewer</code></pre>
   <table>
     <thead><tr><th>영역</th><th>기능</th><th>상태</th></tr></thead>
     <tbody>
-      <tr><td>연결</td><td>pylink JLink.open() + SWD/JTAG + connect(device, speed)</td><td>완료</td></tr>
-      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=Cortex-M3, speed=4000 kHz, CB=0x20000000 fixed)</td><td>완료</td></tr>
-      <tr><td>연결</td><td>J-Link SN 세션 기억 (프로세스 수명, 디스크 저장 없음)</td><td>완료</td></tr>
-      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td>완료</td></tr>
-      <tr><td>연결</td><td>CB 검색 모드: fixed / auto / range</td><td>완료</td></tr>
-      <tr><td>끊김 감지</td><td>target_connected() 폴링 + memory_read32(CB) 병행 (이중화)</td><td>완료</td></tr>
-      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → warn + re-raise → 메인 루프 재연결</td><td>완료</td></tr>
-      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그</td><td>완료</td></tr>
+      <tr><td>연결</td><td>pylink JLink.open() + SWD/JTAG + connect(device, speed)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=Cortex-M3, speed=4000 kHz, CB=0x20000000 fixed)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>J-Link SN 세션 기억 (프로세스 수명, 디스크 저장 없음)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>CB 검색 모드: fixed / auto / range</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>끊김 감지</td><td>target_connected() 폴링 + memory_read32(CB) 병행 (이중화)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → warn + re-raise → 메인 루프 재연결</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그</td><td><span class="badge done">완료</span></td></tr>
       <tr><td>CB 변경</td><td>연결 유지 중 0.1초 주기 감시 → 변경 시 자동 rtt_stop+rtt_start refresh</td><td>완료 (재연결 사이클 경유)</td></tr>
-      <tr><td>이벤트</td><td>연속 연결 실패 스팸 억제 (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td>완료</td></tr>
-      <tr><td>이벤트</td><td>EventBus prefix + HH:MM:SS.mmm 타임스탬프</td><td>완료</td></tr>
-      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td>완료</td></tr>
-      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td>완료</td></tr>
-      <tr><td>입력</td><td>stdin (기본 켜짐) / Telnet 127.0.0.1:19021 → target down channel</td><td>완료</td></tr>
-      <tr><td>CLI</td><td>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</td><td>완료</td></tr>
-      <tr><td>테스트</td><td>pytest 기준 12+ 통과 (config / connector / pipeline / telnet_iac)</td><td>완료</td></tr>
+      <tr><td>이벤트</td><td>연속 연결 실패 스팸 억제 (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>이벤트</td><td>EventBus prefix + HH:MM:SS.mmm 타임스탬프</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>입력</td><td>stdin (기본 켜짐) / Telnet 127.0.0.1:19021 → target down channel</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>CLI</td><td>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>테스트</td><td>pytest 기준 12+ 통과 (config / connector / pipeline / telnet_iac)</td><td><span class="badge done">완료</span></td></tr>
     </tbody>
   </table>
 

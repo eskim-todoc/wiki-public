@@ -62,22 +62,22 @@
   <table>
     <thead><tr><th>영역</th><th>기능</th><th>구현</th></tr></thead>
     <tbody>
-      <tr><td>연결</td><td><code>pylink.JLink.open()</code> + SWD/JTAG + <code>connect(device, speed)</code></td><td>완료</td></tr>
-      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=<code>Cortex-M3</code>, speed=<strong>4000 kHz</strong>, CB=<code>0x20000000</code> fixed)</td><td>완료</td></tr>
-      <tr><td>연결</td><td>J-Link <strong>SN 세션 기억</strong> (프로세스 수명, 디스크 저장 없음)</td><td>완료</td></tr>
-      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td>완료</td></tr>
-      <tr><td>연결</td><td>CB 검색 모드: <code>fixed</code> / <code>auto</code> / <code>range</code></td><td>완료</td></tr>
-      <tr><td>끊김 감지</td><td><code>target_connected()</code> 폴링 + <strong><code>memory_read32(CB)</code></strong> 병행 (이중화)</td><td>완료</td></tr>
-      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → <code>events.warn</code> + re-raise → 메인 루프 재연결</td><td>완료</td></tr>
-      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그 (<code>RTT 버퍼: / 유지: / 변경:</code>)</td><td>완료</td></tr>
-      <tr><td>CB 변경</td><td><strong>연결 유지 중 0.1초 주기 감시 → 변경 시 자동 <code>rtt_stop</code>+<code>rtt_start</code> refresh</strong></td><td>완료 (재연결 사이클 경유)</td></tr>
-      <tr><td>이벤트</td><td><strong>연속 연결 실패 스팸 억제</strong> (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td>완료</td></tr>
-      <tr><td>이벤트</td><td><code>EventBus</code> prefix + <code>HH:MM:SS.mmm</code> 타임스탬프</td><td>완료</td></tr>
-      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td>완료</td></tr>
-      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td>완료</td></tr>
-      <tr><td>입력</td><td>stdin (기본 켜짐, <code>--no-stdin</code>으로 끔) / Telnet(<code>127.0.0.1:19021</code>) → target down channel</td><td>완료</td></tr>
-      <tr><td>CLI</td><td><code>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</code></td><td>완료</td></tr>
-      <tr><td>테스트</td><td><code>pytest</code> 기준 <strong>12+ passed</strong> (config 4 / pipeline 3 / telnet_iac 5+ / connector mocks)</td><td>완료</td></tr>
+      <tr><td>연결</td><td><code>pylink.JLink.open()</code> + SWD/JTAG + <code>connect(device, speed)</code></td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=<code>Cortex-M3</code>, speed=<strong>4000 kHz</strong>, CB=<code>0x20000000</code> fixed)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>J-Link <strong>SN 세션 기억</strong> (프로세스 수명, 디스크 저장 없음)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>연결</td><td>CB 검색 모드: <code>fixed</code> / <code>auto</code> / <code>range</code></td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>끊김 감지</td><td><code>target_connected()</code> 폴링 + <strong><code>memory_read32(CB)</code></strong> 병행 (이중화)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → <code>events.warn</code> + re-raise → 메인 루프 재연결</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그 (<code>RTT 버퍼: / 유지: / 변경:</code>)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>CB 변경</td><td><strong>연결 유지 중 0.1초 주기 감시 → 변경 시 자동 <code>rtt_stop</code>+<code>rtt_start</code> refresh</strong></td><td><span class="badge partial">완료 (재연결 사이클 경유)</span></td></tr>
+      <tr><td>이벤트</td><td><strong>연속 연결 실패 스팸 억제</strong> (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>이벤트</td><td><code>EventBus</code> prefix + <code>HH:MM:SS.mmm</code> 타임스탬프</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>입력</td><td>stdin (기본 켜짐, <code>--no-stdin</code>으로 끔) / Telnet(<code>127.0.0.1:19021</code>) → target down channel</td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>CLI</td><td><code>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</code></td><td><span class="badge done">완료</span></td></tr>
+      <tr><td>테스트</td><td><code>pytest</code> 기준 <strong>12+ passed</strong> (config 4 / pipeline 3 / telnet_iac 5+ / connector mocks)</td><td><span class="badge done">완료</span></td></tr>
     </tbody>
   </table>
 
