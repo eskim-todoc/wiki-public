@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>요구사항 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 요구사항</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>요구사항</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    auto-rtt-viewer의 목표 G1~G6, 기능 요구사항 F1~F12, 비기능 NF1~NF6,
+    수용 기준 AC1~AC9, 작업 범위 외 항목, 위임 범위를 한 페이지에 정리합니다.
+  </p>
+
+  <h2 id="background">1. 배경</h2>
+  <ul>
+    <li>J-Link RTT Viewer(GUI)는 타겟 보드 전원이 OFF되면 연결이 끊어지고, 매번 사용자가 <strong>수동으로</strong> 재연결 버튼을 눌러야 한다.</li>
+    <li>Sound1(E8300) 개발 중 보드 전원 on/off가 잦은 환경에서, 이 반복 작업은 개발 흐름을 끊고 비효율적이다.</li>
+    <li>RTT 텍스트 출력은 TeraTerm 또는 VSCode 터미널에서 보는 것이 익숙하므로, 별도 GUI 없이 텍스트 스트림으로 소비할 수 있어야 한다.</li>
+  </ul>
+
+  <h2 id="goals">2. 목표 (Goals)</h2>
+  <table>
+    <thead><tr><th>ID</th><th>내용</th></tr></thead>
+    <tbody>
+      <tr><td>G1</td><td>타겟 보드 전원 상태와 무관하게 RTT 연결을 <strong>자동 유지·자동 복구</strong></td></tr>
+      <tr><td>G2</td><td>RTT 출력을 <strong>TeraTerm 또는 VSCode 터미널</strong>에서 실시간으로 읽기</td></tr>
+      <tr><td>G3</td><td>필요 시 <strong>파일로 영구 로그 저장</strong></td></tr>
+      <tr><td>G4</td><td><strong>Sound1(E8300)</strong> 기본 프로파일 포함 — 별도 설정 없이 즉시 사용</td></tr>
+      <tr><td>G5</td><td>설정 파일 교체만으로 <strong>다른 타겟 MCU</strong>에도 재사용 가능</td></tr>
+      <tr><td>G6</td><td>기존 J-Link RTT Viewer GUI를 <strong>완전히 대체</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="functional">3. 기능 요구사항 (Functional Requirements)</h2>
+  <table>
+    <thead><tr><th>ID</th><th>요구사항</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td>F1</td><td>J-Link에 자동 연결 (칩명, 인터페이스, 속도 설정 기반)</td><td>—</td></tr>
+      <tr><td>F2</td><td>연결 끊김을 <strong>이벤트 + 폴링 이중화</strong>로 감지</td><td>안정성 확보</td></tr>
+      <tr><td>F3</td><td>끊김 감지 시 <strong>최대한 빠르게 자동 재연결</strong>. 재시도 주기·최대 시도 횟수 설정 가능 (기본값은 공격적으로 짧게)</td><td>AC2 참조</td></tr>
+      <tr><td>F4</td><td>지정된 RTT 업채널(기본 0번)을 읽어 출력</td><td>다중 채널은 확장 고려</td></tr>
+      <tr><td>F5</td><td><strong>stdout</strong>에 실시간 출력 (VSCode 터미널용)</td><td>기본 활성</td></tr>
+      <tr><td>F6</td><td><strong>파일 로깅</strong> 옵션 — 경로 지정, append 모드</td><td>—</td></tr>
+      <tr><td>F7</td><td><strong>Telnet 서버 모드</strong> — 지정 포트에서 실시간 스트림 송출 (TeraTerm <code>telnet localhost &lt;port&gt;</code> 접속용)</td><td>—</td></tr>
+      <tr><td>F8</td><td><strong>설정 파일</strong> (YAML or JSON) 기반 타겟 구성 — chip, interface, speed, RTT 검색 영역 등</td><td>—</td></tr>
+      <tr><td>F9</td><td><strong>Sound1(E8300) 기본 프로파일</strong> 포함 — 즉시 사용 가능</td><td>—</td></tr>
+      <tr><td>F10</td><td>각 출력 라인에 <strong>타임스탬프 prefix</strong> 옵션</td><td>on/off</td></tr>
+      <tr><td>F11</td><td><strong>상태 메시지</strong>(연결/끊김/재시도/복구)는 RTT 데이터와 시각적으로 구분</td><td>색상 또는 prefix</td></tr>
+      <tr><td>F12</td><td><strong>Host → Target ASCII 키 입력</strong> (RTT downchannel 쓰기) — 입력 소스: (a) Telnet 클라이언트(TeraTerm), (b) 프로세스 stdin(VSCode 터미널). 두 경로 동시 활성 가능</td><td>양방향 RTT</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="nonfunctional">4. 비기능 요구사항 (Non-Functional)</h2>
+  <table>
+    <thead><tr><th>ID</th><th>요구사항</th></tr></thead>
+    <tbody>
+      <tr><td>NF1</td><td>Windows 10/11 지원 (Linux/macOS는 차후)</td></tr>
+      <tr><td>NF2</td><td>SEGGER J-Link 소프트웨어 설치(JLinkARM.dll 등)를 <strong>전제</strong>로 한다</td></tr>
+      <tr><td>NF3</td><td>설치 부담 최소화 — 가벼운 의존성 (Python venv + pip 수준)</td></tr>
+      <tr><td>NF4</td><td>로그 경로·telnet 포트·재시도 주기 등 <strong>런타임 파라미터는 CLI 인자 또는 설정 파일로 변경 가능</strong></td></tr>
+      <tr><td>NF5</td><td><code>Ctrl+C</code> 종료 시 J-Link 연결 해제, 파일 플러시, 소켓 닫기 등 <strong>자원 정리 보장</strong></td></tr>
+      <tr><td>NF6</td><td>빌드·실행 절차는 사용방법 문서로 정리</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="acceptance">5. 수용 기준 (Acceptance Criteria)</h2>
+  <table>
+    <thead><tr><th>ID</th><th>기준</th></tr></thead>
+    <tbody>
+      <tr><td>AC1</td><td>도구 실행 시 보드 전원이 켜져 있으면 <strong>1초 이내</strong> RTT 출력이 stdout에 나타난다.</td></tr>
+      <tr><td>AC2</td><td>보드 전원 OFF → ON 시, 사용자 조작 없이 <strong>펌웨어의 RTT 초기화 직후 첫 메시지</strong>부터 누락 없이 캡처된다. 재연결 지연 목표: <strong>1초 이내</strong>.</td></tr>
+      <tr><td>AC3</td><td>파일 로깅 옵션 활성 시, RTT 출력 전체가 <strong>누락 없이</strong> 파일에 기록된다 (재연결 경계에서도 유실 없음).</td></tr>
+      <tr><td>AC4</td><td>Telnet 서버 모드 활성 시, TeraTerm에서 <code>telnet localhost &lt;port&gt;</code>로 접속해 실시간 출력을 볼 수 있다.</td></tr>
+      <tr><td>AC5</td><td>Telnet 클라이언트가 송신한 <strong>ASCII 키 입력</strong>이 타겟 펌웨어에 전달된다 (RTT downchannel).</td></tr>
+      <tr><td>AC6</td><td><code>--stdin</code> 모드(또는 동등 옵션) 활성 시, 프로세스 stdin으로 받은 <strong>ASCII 입력도 타겟에 전달</strong>된다.</td></tr>
+      <tr><td>AC7</td><td>Sound1(E8300) 기본 프로파일로 <strong>설정 편집 없이</strong> 동작한다.</td></tr>
+      <tr><td>AC8</td><td><code>Ctrl+C</code> 입력 시 자원 정리 후 종료한다 (좀비 프로세스·락 파일 없음).</td></tr>
+      <tr><td>AC9</td><td>연결 끊김·복구 이벤트가 <strong>타임스탬프와 함께 상태 메시지로 표시</strong>된다.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="regression">6. 회귀 방지</h2>
+  <ul>
+    <li>본 작업은 별도 feature 브랜치 격리로 진행 (초기 개발 — 첫 main 라인 형성)</li>
+    <li>각 commit이 atomic — 단계별 revert 가능</li>
+  </ul>
+
+  <h2 id="out-of-scope">7. 작업 범위 외 (Out of Scope)</h2>
+  <ul>
+    <li>J-Link GDB 디버깅 기능 (브레이크포인트, 메모리 덤프 등)은 범위 외</li>
+    <li>RTT 출력의 파싱·시각화 대시보드는 범위 외 (raw 텍스트 스트림만 취급)</li>
+  </ul>
+
+  <h2 id="open">8. 위임 범위 (Claude 자율 결정 → 계획에서 확정)</h2>
+  <div class="callout important">
+    <div class="callout-title">Important</div>
+    아래 항목은 요구사항 단계에서는 고정하지 않고, <a href="architecture.html">아키텍처(계획)</a>에서 근거와 함께 결정한다.
+  </div>
+  <ul>
+    <li>구현 언어: Python 유력 (<code>pylink-square</code> 라이브러리 검토) vs 기타</li>
+    <li>J-Link 제어 방식: <code>pylink-square</code> (Python binding) vs <code>JLink.exe</code> CLI 래핑 vs 혼합</li>
+    <li>설정 파일 포맷: YAML vs JSON vs TOML</li>
+    <li>Telnet 서버 멀티 클라이언트 지원 여부 (입력 출처가 여럿일 때 처리 규칙 포함)</li>
+    <li>stdin 입력 모드의 라인 버퍼링 / raw 모드 처리</li>
+    <li>로그 파일 회전(rotation) 방식 — 날짜별/크기별</li>
+    <li>패키지/의존성 관리: <code>pip + requirements.txt</code> vs <code>poetry</code> vs <code>uv</code></li>
+    <li>재연결 폴링 간격의 기본값 — 빠른 재연결(=AC2 만족)과 USB/J-Link 부하의 균형점</li>
+  </ul>
+
+  <h3>위임 범위 밖 (사용자 결정 영역)</h3>
+  <ul>
+    <li>최종 기술 스택 승인 (Python 3.10·pylink-square·asyncio·YAML)</li>
+    <li>Telnet 기본 포트·라인 종결자·패키지 이름·프로파일 샘플 (계획 §12 승인 대상)</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    본 작업은 분석 단계가 별도 산출물 없이 구두 검토로 진행되었습니다 — 첫 개발 작업이라
+    설계 근거 분석은 <a href="rtt-reference.html">J-Link RTT 메커니즘</a>(현상분석) 문서에 직접 담겨 있습니다.
+  </div>
+
+  <nav class="page-nav">
+    <a class="prev" href="overview.html"><span class="label">← 이전</span>개요</a>
+    <a class="next" href="architecture.html"><span class="label">다음 →</span>아키텍처</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/tasks/core/20260421_initial-development/요구사항.md</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>

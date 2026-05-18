@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>auto-rtt-viewer — J-Link RTT Auto Connect CLI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="J-Link RTT 로그를 자동 연결·자동 재연결로 stdout·파일·Telnet에 스트리밍하는 Python CLI 도구. Sound1(E8300) 펌웨어 개발의 표준 RTT 모니터링 도구.">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group">
+      <div class="toc-label">Home</div>
+      <ul><li><a href="index.html">홈</a></li></ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">기획</div>
+      <ul>
+        <li><a href="overview.html">개요</a></li>
+        <li><a href="requirements.html">요구사항</a></li>
+      </ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">설계</div>
+      <ul>
+        <li><a href="architecture.html">아키텍처</a></li>
+        <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+      </ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">운영</div>
+      <ul>
+        <li><a href="install.html">설치</a></li>
+        <li><a href="usage.html">사용법</a></li>
+        <li><a href="debugging.html">디버깅 가이드</a></li>
+        <li><a href="testing.html">시험 절차</a></li>
+        <li><a href="troubleshooting.html">트러블슈팅</a></li>
+      </ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">히스토리</div>
+      <ul><li><a href="history.html">이력과 변경</a></li></ul>
+    </div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><strong>auto-rtt-viewer</strong></div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="kicker">J-Link RTT Auto Connect CLI</div>
+    <h1>auto-rtt-viewer</h1>
+    <p class="lead">
+      보드 전원 OFF/ON, JFlash 다운로드, J-Link 재점유 상황에서도 RTT 로그 확인 흐름이
+      끊기지 않도록 만든 Python 기반 CLI 도구. 한 번 실행해두면 연결이 끊겨도 다시 붙고,
+      로그는 터미널·파일·Telnet으로 동시에 흘러갑니다. Sound1(E8300) 펌웨어 개발의
+      표준 RTT 모니터링 도구로 정착해 SEGGER RTT Viewer GUI를 완전히 대체합니다.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="install.html">설치하기</a>
+      <a class="btn" href="usage.html">사용법 보기</a>
+      <a class="btn" href="overview.html">개요</a>
+      <a class="btn" href="architecture.html">아키텍처</a>
+      <a class="btn" href="rtt-reference.html">RTT 메커니즘</a>
+    </div>
+  </section>
+
+  <img class="figure" src="assets/flow.png" alt="auto-rtt-viewer 데이터 흐름">
+
+  <h2 id="features">핵심 가치</h2>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">자동 재연결</div>
+      <div class="card-body">
+        연결 실패·타겟 전원 OFF 상태에서도 <strong>100 ms 간격</strong>으로 무한 재시도.
+        같은 사유 반복 시 30초마다 1회만 요약 출력해 로그 도배 방지.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">초기 로그 확보</div>
+      <div class="card-body">
+        Sound1의 고정 RTT Control Block 주소 <code>0x20000000</code>으로 직접 진입.
+        부트로더 초기 메시지부터 한 줄도 놓치지 않음.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">다중 출력</div>
+      <div class="card-body">
+        터미널 stdout · 로그 파일(append) · Telnet 서버(<code>127.0.0.1:19021</code>)
+        세 경로에 동시 fan-out. 모든 라인 누락 없이 보존.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">양방향 RTT</div>
+      <div class="card-body">
+        VSCode 터미널 stdin과 TeraTerm Telnet 클라이언트 입력을
+        타겟 RTT down channel로 전달. 펌웨어 콘솔 명령 실행 가능.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">SN 세션 기억</div>
+      <div class="card-body">
+        J-Link 프로브가 여러 개여도 첫 선택 후 SN을 프로세스 메모리에 기억.
+        재연결 시 선택 창 없이 같은 프로브로 자동 복귀.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">CB 변경 자동 감지</div>
+      <div class="card-body">
+        부트로더→앱 전환 등으로 RTT Control Block이 재구성되면
+        100 ms 주기 감시로 감지 → 자동 <code>rtt_start</code> 재호출로 캐시 refresh.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">YAML 프로파일</div>
+      <div class="card-body">
+        Sound1 기본 프로파일 내장 + 다른 MCU도 YAML 한 장 추가로 재사용.
+        모든 옵션은 CLI 인자로 오버라이드 가능.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">스팸 억제</div>
+      <div class="card-body">
+        같은 사유로 연속 실패 시 첫 줄만 출력 → 30초마다 요약 1회.
+        사유가 바뀌거나 복구되면 즉시 새 상태 출력.
+      </div>
+    </div>
+  </div>
+
+  <h2 id="quickstart">한눈에 빠른 시작</h2>
+  <pre class="language-powershell"><code>git clone https://github.com/eskim-todoc/auto-rtt-viewer.git
+cd auto-rtt-viewer
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+
+auto-rtt-viewer</code></pre>
+
+  <div class="callout tip">
+    <div class="callout-title">Tip</div>
+    옵션 없이 <code>auto-rtt-viewer</code>만 치면 Sound1 기본 프로파일이 즉시 동작합니다.
+    종료는 <kbd>Ctrl</kbd>+<kbd>C</kbd> 한 번.
+  </div>
+
+  <h2 id="map">문서 지도</h2>
+  <table>
+    <thead><tr><th>구간</th><th>문서</th><th>읽는 시점</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="2">기획</td>
+          <td><a href="overview.html">개요</a></td>
+          <td>도구가 무엇을·왜 만드는지 파악할 때</td></tr>
+      <tr><td><a href="requirements.html">요구사항</a></td>
+          <td>목표·기능·수용 기준의 정식 정의가 필요할 때</td></tr>
+      <tr><td rowspan="2">설계</td>
+          <td><a href="architecture.html">아키텍처</a></td>
+          <td>모듈·FSM·CB 변경 감지의 내부 구조 이해</td></tr>
+      <tr><td><a href="rtt-reference.html">J-Link RTT 메커니즘</a></td>
+          <td>pylink 함정·끊김 감지 이중화의 근거 확보</td></tr>
+      <tr><td rowspan="5">운영</td>
+          <td><a href="install.html">설치</a></td>
+          <td>처음 PC에 도구를 올릴 때</td></tr>
+      <tr><td><a href="usage.html">사용법</a></td>
+          <td>매일 쓰는 기본 동작·옵션·TeraTerm 입력 확인</td></tr>
+      <tr><td><a href="debugging.html">디버깅 가이드</a></td>
+          <td>로그 해석·내부 동작 진단·코드 위치 추적</td></tr>
+      <tr><td><a href="testing.html">시험 절차</a></td>
+          <td>AC1~AC9 회귀 검증, pytest 실행</td></tr>
+      <tr><td><a href="troubleshooting.html">트러블슈팅</a></td>
+          <td>문제 증상별 빠른 해결</td></tr>
+      <tr><td>히스토리</td>
+          <td><a href="history.html">이력과 변경</a></td>
+          <td>"지난번에 뭐가 바뀌었지?" 추적</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="status">현재 구현 상태</h2>
+  <table>
+    <thead><tr><th>영역</th><th>기능</th><th>상태</th></tr></thead>
+    <tbody>
+      <tr><td>연결</td><td>pylink JLink.open() + SWD/JTAG + connect(device, speed)</td><td>완료</td></tr>
+      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=Cortex-M3, speed=4000 kHz, CB=0x20000000 fixed)</td><td>완료</td></tr>
+      <tr><td>연결</td><td>J-Link SN 세션 기억 (프로세스 수명, 디스크 저장 없음)</td><td>완료</td></tr>
+      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td>완료</td></tr>
+      <tr><td>연결</td><td>CB 검색 모드: fixed / auto / range</td><td>완료</td></tr>
+      <tr><td>끊김 감지</td><td>target_connected() 폴링 + memory_read32(CB) 병행 (이중화)</td><td>완료</td></tr>
+      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → warn + re-raise → 메인 루프 재연결</td><td>완료</td></tr>
+      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그</td><td>완료</td></tr>
+      <tr><td>CB 변경</td><td>연결 유지 중 0.1초 주기 감시 → 변경 시 자동 rtt_stop+rtt_start refresh</td><td>완료 (재연결 사이클 경유)</td></tr>
+      <tr><td>이벤트</td><td>연속 연결 실패 스팸 억제 (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td>완료</td></tr>
+      <tr><td>이벤트</td><td>EventBus prefix + HH:MM:SS.mmm 타임스탬프</td><td>완료</td></tr>
+      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td>완료</td></tr>
+      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td>완료</td></tr>
+      <tr><td>입력</td><td>stdin (기본 켜짐) / Telnet 127.0.0.1:19021 → target down channel</td><td>완료</td></tr>
+      <tr><td>CLI</td><td>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</td><td>완료</td></tr>
+      <tr><td>테스트</td><td>pytest 기준 12+ 통과 (config / connector / pipeline / telnet_iac)</td><td>완료</td></tr>
+    </tbody>
+  </table>
+
+  <nav class="page-nav">
+    <a class="prev" href="index.html"><span class="label">현재</span>홈</a>
+    <a class="next" href="overview.html"><span class="label">다음 →</span>개요</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>

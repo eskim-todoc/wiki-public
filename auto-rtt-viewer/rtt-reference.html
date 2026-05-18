@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>J-Link RTT 메커니즘 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / J-Link RTT 메커니즘</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>J-Link RTT 연결 메커니즘</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    타겟 RAM의 <code>_SEGGER_RTT</code> Control Block을 호스트 J-Link가 SWD로 폴링·읽기/쓰기하는 구조,
+    보드 전원 OFF 시점의 신호 동작, pylink-square API의 알려진 함정, 그리고 본 도구의
+    이중화 끊김 감지가 도출된 근거를 정리합니다.
+  </p>
+
+  <h2 id="overview">1. J-Link RTT 개요</h2>
+  <pre class="mermaid">
+flowchart LR
+    PC["PC<br/>auto-rtt-viewer"]
+    JL["J-Link Probe"]
+    MCU["MCU<br/>Cortex-M3"]
+    RAM[("Target RAM<br/>SEGGER_RTT CB + Up/Down 버퍼")]
+
+    PC <-->|USB, JLinkARM.dll| JL
+    JL <-->|SWD| MCU
+    MCU <-->|메모리 버스| RAM
+    JL -.RAM read/write.-> RAM
+  </pre>
+
+  <ul>
+    <li><strong>RTT(Real-Time Transfer)</strong>: 타겟 RAM에 <code>_SEGGER_RTT</code> Control Block(이하 CB)을 두고, 호스트 J-Link가 SWD로 RAM을 직접 읽고 써서 비침습적(non-intrusive) 통신을 구현.</li>
+    <li>CB 내부에 <strong>Up 채널</strong>(Target→Host)과 <strong>Down 채널</strong>(Host→Target) 원형 버퍼 포인터가 들어 있다.</li>
+    <li>호스트가 주기적으로 RAM을 폴링하며 Up 버퍼에서 읽고, Down 버퍼에 쓰는 구조. 타겟 CPU halt 불필요.</li>
+    <li>CB 검색은 RAM 영역에서 <code>SEGGER RTT\0</code> 매직 문자열을 스캔하거나, 고정 주소 지정 방식.</li>
+  </ul>
+
+  <h2 id="disconnect-points">2. 연결이 끊어지는 실제 시점</h2>
+  <table>
+    <thead><tr><th>이벤트</th><th>신호 레벨</th><th>감지 포인트</th></tr></thead>
+    <tbody>
+      <tr><td>타겟 보드 전원 OFF</td><td>SWD가 high-Z / 응답 없음</td><td>다음 RTT read 시 실패 / <code>target_connected()</code> False</td></tr>
+      <tr><td>USB 연결 끊김</td><td>J-Link DLL 핸들 무효</td><td><code>opened()</code> / <code>connected()</code> False</td></tr>
+      <tr><td>타겟 MCU halt/reset</td><td>SWD는 살아있지만 RTT 버퍼 포인터 리셋 가능</td><td>내용 이상, CB 재검색 필요</td></tr>
+      <tr><td>펌웨어가 SWD 핀을 GPIO로 설정</td><td>디버그 인터페이스 소실</td><td>명령 실패</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout important">
+    <div class="callout-title">Important</div>
+    실제 현장에서 가장 자주 발생하는 시나리오는 <strong>"타겟 전원 OFF → 잠시 후 ON"</strong> (보드 리부팅).
+    USB·J-Link 프로브는 계속 PC에 붙어 있다.
+  </div>
+
+  <h2 id="pylink-api">3. pylink-square가 제공하는 상태 확인 API</h2>
+  <table>
+    <thead><tr><th>API</th><th>반환</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>jlink.opened()</code></td><td><code>bool</code></td><td>DLL이 열려 있는가 (프로브와 통신 가능한가)</td></tr>
+      <tr><td><code>jlink.connected()</code></td><td><code>bool</code></td><td>J-Link 프로브 자체와 host 간 통신 가능</td></tr>
+      <tr><td><code>jlink.target_connected()</code></td><td><code>bool</code></td><td>SWD 너머 <strong>타겟 MCU</strong>가 살아 있는가</td></tr>
+      <tr><td><code>jlink.rtt_read(ch, n)</code></td><td><code>list[int]</code> (bytes)</td><td>RTT upchannel 바이트 수령. 실패 시 예외</td></tr>
+      <tr><td><code>jlink.rtt_write(ch, b)</code></td><td><code>int</code> (written)</td><td>RTT downchannel 쓰기</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="pitfalls">알려진 함정</h3>
+  <ul>
+    <li><strong>pylink #144</strong>: <code>connect()</code>가 예외 없이 끝나도 <strong><code>target_connected()</code>가 False일 수 있음</strong>. 명시적 검사 필수.</li>
+    <li><strong>pylink #249 / #178</strong>: <code>rtt_start()</code>의 <strong>CB 자동 검색이 일부 MCU에서 실패</strong>. Fallback으로 명시 주소 / 검색 범위 지정 옵션을 구현에서 준비.</li>
+    <li><strong><code>target_connected()</code> 단독으로는 타겟 전원 OFF 즉시 감지 보장 안 됨.</strong> J-Link DLL이 내부 캐시 상태를 반환할 수 있어 전원이 꺼져도 한동안 True가 유지된다(현장 관측). 또한 <code>rtt_read()</code>도 상황에 따라 예외를 던지지 않고 <strong>빈 바이트 리스트</strong>만 조용히 반환하는 경우가 있어 reader 태스크가 끊김 감지 신호를 내지 못할 수 있다.
+      <ul>
+        <li><strong>대응</strong>: supervise 루프에서 <code>target_connected()</code> 폴링에 더해, 프로파일에 알려진 RTT CB 주소(또는 검색 범위 시작 주소)로 <strong>주기적 <code>memory_read32</code> 호출</strong>을 병행. 전원 OFF 시 SWD 응답이 없어 예외가 발생하므로 즉시 끊김 판정 가능. CB 주소가 없는 <code>cb_search.mode=auto</code> 프로파일은 이 보강이 적용되지 않으며 <code>target_connected()</code> 한계에 그대로 노출된다.</li>
+      </ul>
+    </li>
+    <li>예외 타입은 대부분 <code>pylink.errors.JLinkException</code> 계열.</li>
+    <li><strong>J-Link DLL은 단일 프로세스 전용</strong>. JFlash / Ozone / SEGGER RTT Viewer GUI / auto-rtt-viewer가 모두 <code>JLinkARM.dll</code>을 직접 열기 때문에 동시 열람 불가. 상대 도구가 DLL을 잡고 있으면 <code>Could not open J-Link ... already in use</code> 계열 예외 발생. auto-rtt-viewer는 자동 재시도 루프이므로 상대 도구 해제 시 자연스럽게 복구됨(예: JFlash 다운로드 → 종료 → 즉시 재연결).</li>
+  </ul>
+
+  <h2 id="initial-msg">4. "초기 부팅 메시지를 놓치지 않는" 조건 분석</h2>
+  <p>수용 기준 AC2를 충족하려면 다음이 필요하다.</p>
+  <pre class="mermaid">
+sequenceDiagram
+    participant Host as auto-rtt-viewer
+    participant Probe as J-Link 프로브
+    participant MCU as 타겟 MCU
+    participant RTT as RTT CB (in RAM)
+
+    Note over MCU: 전원 OFF
+    loop 짧은 주기로 재시도
+        Host->>Probe: connect(chip)
+        Probe-->>Host: 실패 (target 없음)
+    end
+    Note over MCU: 전원 ON → 부팅
+    MCU->>RTT: SEGGER_RTT_Init() (부트로더 초기)
+    Host->>Probe: connect(chip) (곧바로 다음 재시도)
+    Probe-->>Host: 성공
+    Host->>RTT: rtt_start() → CB 검색
+    RTT-->>Host: CB 주소 확정
+    loop 높은 빈도 폴링
+        Host->>RTT: rtt_read(ch 0)
+        RTT-->>Host: 부팅 메시지 (누락 없음)
+    end
+  </pre>
+
+  <h3 id="loss-risk">4.1 메시지 유실 가능성</h3>
+  <ul>
+    <li><strong>타겟 Up 버퍼는 원형</strong>. 호스트가 읽지 않으면 버퍼가 가득 찬 뒤 기본 모드(<code>SEGGER_RTT_MODE_NO_BLOCK_SKIP</code>)에서는 <strong>덮어써진다</strong>.</li>
+    <li>Sound1의 RTT 버퍼 크기와 부팅 직후 출력량을 정확히 알지 못하므로, <strong>재연결 지연 자체를 최소화</strong>하는 것이 가장 안전한 대책.</li>
+    <li>Sound1은 <strong>CB 주소가 고정(<code>0x20000000</code>)</strong>이므로 <code>rtt_start(block_address=0x20000000)</code> 직행 → 일반적인 CB 자동 검색(수 ms ~ 수십 ms) 단계를 건너뛴다.</li>
+  </ul>
+
+  <h3 id="retry-cost">4.2 짧은 재시도 주기의 비용</h3>
+  <ul>
+    <li>J-Link SDK는 내부적으로 SWD에 전기적 신호를 보내므로, 너무 공격적인 주기(수 ms 수준)는 USB 트래픽 · 타겟 영향 · 타 디버거 점유와 충돌 가능.</li>
+    <li>경험적 권장치는 <strong>50 ~ 200 ms</strong>. 본 도구는 기본값 100 ms로 운영.</li>
+  </ul>
+
+  <h3 id="target-side">4.3 타겟 측 요인 (도구 범위 밖)</h3>
+  <ul>
+    <li>펌웨어의 RTT 초기화 시점 자체가 늦으면 그 이전 <code>printf</code>는 근본적으로 수집 불가 → 펌웨어 책임.</li>
+    <li>Sound1은 부트로더 초기에 <code>ENABLE_SEGGER_RTT=1</code>로 초기화되므로 이 부분은 이미 유리한 조건.</li>
+  </ul>
+
+  <h2 id="sound1">5. Sound1 (E8300) 실측 설정</h2>
+  <table>
+    <thead><tr><th>항목</th><th>값</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>J-Link Device Name</td><td><code>Cortex-M3</code> (generic)</td><td>Eclipse Debug launch, Sound1 <code>.cproject</code></td></tr>
+      <tr><td>인터페이스</td><td>SWD</td><td>launch + <code>Sys_DIO_CM3JTAGConfig(true, false)</code> in <code>bootloader/main.c</code></td></tr>
+      <tr><td>Clock</td><td><strong>4000 kHz</strong></td><td>본 도구가 기본값으로 채택 (현행 기본 프로파일). 과거 기록(1000 kHz)에서 갱신.</td></tr>
+      <tr><td>RTT CB 주소</td><td><strong>고정 <code>0x20000000</code></strong></td><td>현재 빌드 환경 실측값</td></tr>
+      <tr><td>RTT 초기화 시점</td><td>부트로더 초기 (<code>CoreDebug-&gt;DEMCR |= TRCENA</code>, <code>ENABLE_SEGGER_RTT=1</code>)</td><td><code>bootloader/main.c</code>, <code>ci_initialize.h</code></td></tr>
+      <tr><td>공식 SEGGER E8300 프로파일</td><td><strong>없음</strong></td><td>SEGGER KB에 명시</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout important">
+    <div class="callout-title">Important</div>
+    <strong>Sound1은 RTT CB 주소를 <code>0x20000000</code>로 고정</strong>해 <code>rtt_start(block_address=0x20000000)</code>를 호출한다.
+    이로써 (1) <code>rtt_start()</code> auto-detect 실패 리스크(pylink #249) 회피, (2) CB 검색 단계가 없으므로 재연결 직후 RTT 수신까지의 지연이 추가로 단축 → AC2에 유리.
+  </div>
+
+  <div class="callout warning">
+    <div class="callout-title">Warning</div>
+    E8300은 SEGGER 공식 "Supported Devices" 목록에 없음. 다른 타겟에서 재사용할 때는
+    설정 파일의 <code>cb_search.mode</code>를 <code>auto</code> 또는 <code>range</code>로 전환해야 한다.
+  </div>
+
+  <h2 id="input-channel">6. 입력(Host → Target) 채널 동작</h2>
+  <p>표준 패턴 (pylink examples/pylink-rtt 참조):</p>
+  <pre class="language-python"><code>payload = list(bytearray(line, "utf-8") + b"\x0A\x00")
+jlink.rtt_write(0, payload)</code></pre>
+  <ul>
+    <li>라인 종결자(<code>\n</code> 또는 <code>\r\n</code>)는 타겟 파서가 기대하는 형식에 따라 달라 <strong>설정 가능</strong>해야 한다.</li>
+    <li>입력 소스가 둘 이상일 때(Telnet + stdin) 동시성 문제: 본 도구는 단일 큐로 직렬화하는 방안을 채택 — 도착 순서대로 in_queue에 push, Writer가 단일 소비.</li>
+  </ul>
+
+  <h2 id="telnet">7. Telnet 퍼블리시 동작</h2>
+  <ul>
+    <li>asyncio TCP 서버(<code>start_server</code>)로 구성.</li>
+    <li>특이사항: <strong>양방향</strong>이다. 클라이언트가 보낸 바이트는 타겟 입력으로 들어가야 하므로, 단순 fanout broadcaster 이상으로 입력 라우팅이 필요.</li>
+    <li>동시 접속 클라이언트 수 제한은 기본 무제한(<code>allow_multi_client: true</code>). 실제 운용에서는 단일 클라이언트 권장 (입력 충돌 회피).</li>
+    <li><strong>IAC 제어 시퀀스 처리</strong>: Telnet의 <code>WILL/DO/SB..SE</code>·<code>escaped FF</code>를 in-stream에서 제거 후 in_queue에 전달.</li>
+  </ul>
+
+  <h2 id="dual-detection">8. 끊김 감지 이중화 근거</h2>
+  <p>요구사항 F2 "이벤트 + 폴링 이중화"의 현실적 구현:</p>
+  <table>
+    <thead><tr><th>감지 소스</th><th>원리</th><th>장점</th><th>한계</th></tr></thead>
+    <tbody>
+      <tr><td><strong>이벤트</strong></td><td><code>rtt_read</code> / <code>rtt_write</code> / 기타 API 호출에서 <code>JLinkException</code> 발생</td><td>실시간 감지</td><td>호출이 없을 때는 감지 불가 (idle 시 dead)</td></tr>
+      <tr><td><strong>폴링</strong></td><td>별도 타이머로 <code>target_connected()</code> + <code>memory_read32(CB)</code> 주기 조회</td><td>idle 상태에서도 감지</td><td>주기 간격만큼 지연</td></tr>
+    </tbody>
+  </table>
+  <p>→ <strong>둘을 병행</strong>하여, API 예외 시 즉시 재연결 루프 진입 + 폴링으로 보조.</p>
+
+  <h2 id="conclusion">9. 결론 및 다음 단계</h2>
+  <ul>
+    <li>구현은 <strong>Python + pylink-square</strong>가 합리적 선택. <code>JLink.exe</code> CLI 래핑은 예외 포착·성능 면에서 불리.</li>
+    <li><strong>상시 빠른 재연결 루프</strong> + <strong>양방향 RTT 채널 I/O</strong> + <strong>다중 싱크/소스 파이프라인</strong> 구조가 필요.</li>
+    <li>구체값 결정(폴링 간격 100 ms, 입력 라인 종결자 <code>\n</code>, telnet 포트 19021 등)은 <a href="architecture.html#open-decisions">아키텍처 §12</a>에서 확정.</li>
+  </ul>
+
+  <h2 id="refs">10. 참고 자료 (외부 링크)</h2>
+  <ul>
+    <li><a href="https://kb.segger.com/ONSemi_Ezairo_8300" target="_blank" rel="noopener">SEGGER KB — ONSemi Ezairo 8300</a></li>
+    <li><a href="https://kb.segger.com/ON_Semi_E8300-001-GEVB" target="_blank" rel="noopener">SEGGER KB — ON Semi E8300-001-GEVB</a></li>
+    <li><a href="https://github.com/square/pylink" target="_blank" rel="noopener">square/pylink (GitHub)</a></li>
+    <li><a href="https://github.com/square/pylink/blob/master/examples/pylink-rtt" target="_blank" rel="noopener">square/pylink — examples/pylink-rtt</a></li>
+    <li><a href="https://github.com/square/pylink/issues/144" target="_blank" rel="noopener">pylink #144 — target_connected after connect()</a></li>
+    <li><a href="https://github.com/square/pylink/issues/249" target="_blank" rel="noopener">pylink #249 — rtt_start auto-detect 실패</a></li>
+    <li><a href="https://github.com/square/pylink/issues/178" target="_blank" rel="noopener">pylink #178 — RTT autodetect 차이</a></li>
+  </ul>
+
+  <nav class="page-nav">
+    <a class="prev" href="architecture.html"><span class="label">← 이전</span>아키텍처</a>
+    <a class="next" href="install.html"><span class="label">다음 →</span>설치</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/참고/J-Link/RTT 연결 메커니즘.md</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme: t, securityLevel: 'loose',
+      themeVariables: { fontFamily: 'inherit' } });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

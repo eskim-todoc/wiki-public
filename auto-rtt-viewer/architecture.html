@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>아키텍처 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 아키텍처</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>아키텍처</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    Python 3.10 + pylink-square + asyncio + YAML 기반 모듈 구조,
+    11단계 구현 시퀀스, 끊김 감지 FSM, CB 변경 감지 메커니즘,
+    설정 파일 스펙, CLI 스펙, 위험 관리까지의 설계 전체.
+  </p>
+
+  <h2 id="sequence">1. 전체 구현 시퀀스</h2>
+  <p>단계별 commit 단위로 분해. 각 단계는 독립 검증 가능.</p>
+  <pre class="mermaid">
+flowchart TD
+    A["Step 1: Skeleton"] --> B["Step 2: Config"]
+    B --> C["Step 3: Connector"]
+    C --> D["Step 4: Reader"]
+    D --> E["Step 5: Writer"]
+    E --> F["Step 6: FileSink"]
+    F --> G["Step 7: Telnet"]
+    G --> H["Step 8: Events"]
+    H --> I["Step 9: CLI"]
+    I --> J["Step 10: Test"]
+    J --> K["Step 11: Docs"]
+  </pre>
+
+  <h2 id="stack">2. 기술 스택 확정 + 근거</h2>
+  <table>
+    <thead><tr><th>항목</th><th>선택</th><th>근거</th></tr></thead>
+    <tbody>
+      <tr><td>언어</td><td><strong>Python 3.10+</strong></td><td><code>match</code>/union 타입 등 최근 문법 활용. pylink-square 공식 지원.</td></tr>
+      <tr><td>J-Link 제어</td><td><strong>pylink-square</strong></td><td>공식 Python binding. 동기 API. 예외 기반 오류 처리 가능. <code>JLink.exe</code> CLI 래핑은 예비용만.</td></tr>
+      <tr><td>설정 파일</td><td><strong>YAML</strong> (pyyaml)</td><td>주석·가독성. 구현 복잡도 낮음.</td></tr>
+      <tr><td>비동기 모델</td><td><strong>asyncio</strong> + <code>loop.run_in_executor</code>로 pylink 호출 오프로딩</td><td>Telnet 양방향 서버 자연스러움. 단일 이벤트 루프.</td></tr>
+      <tr><td>Telnet 서버</td><td>asyncio <code>start_server</code></td><td>멀티 클라이언트 fanout + 입력 수집.</td></tr>
+      <tr><td>패키지 관리</td><td><strong>venv + pip + requirements.txt</strong> (pyproject.toml 병행)</td><td>설치 부담 최소.</td></tr>
+      <tr><td>테스트</td><td><code>pytest</code> + <code>pytest-asyncio</code></td><td>단위 테스트용. asyncio mode strict.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="dirs">3. 디렉토리 구조</h2>
+  <pre class="language-text"><code>auto-rtt-viewer/
+├── CLAUDE.md
+├── .gitignore
+├── pyproject.toml               # 패키지 메타 + dependencies + CLI 엔트리
+├── src/
+│   └── auto_rtt_viewer/
+│       ├── __init__.py
+│       ├── __main__.py          # `python -m auto_rtt_viewer`
+│       ├── cli.py               # argparse, 엔트리포인트
+│       ├── config.py            # YAML 로더 + dataclass 프로파일
+│       ├── connector.py         # JLinkConnector: 연결/재연결 supervisor
+│       ├── rtt_io.py            # RTT up/down 읽기·쓰기 task
+│       ├── pipeline.py          # OutputDispatcher (out_queue → sinks)
+│       ├── sinks.py             # Sink 프로토콜 + Stdout/File sink
+│       ├── sources.py           # Source 프로토콜 + Stdin source
+│       ├── telnet_server.py     # 양방향 Telnet 서버 (sink + source)
+│       ├── events.py            # EventBus, StatusEvent (연결/끊김 표시)
+│       └── profiles/
+│           └── sound1.yaml      # Sound1(E8300) 기본 프로파일
+├── tests/
+│   ├── __init__.py
+│   ├── test_config.py
+│   ├── test_pipeline.py
+│   ├── test_telnet_iac.py
+│   └── test_connector.py        # pylink를 mock으로 바꿔 재시도 루프 검증
+└── docs/</code></pre>
+
+  <h2 id="runtime">4. 런타임 아키텍처</h2>
+  <pre class="mermaid">
+flowchart LR
+    subgraph CLI
+      Args[argparse 인자]
+      Cfg[config.py<br/>YAML + override]
+    end
+
+    subgraph Core["auto_rtt_viewer (asyncio 이벤트 루프)"]
+      Supervisor[connector.py<br/>JLinkConnector]
+      Reader[rtt_io.Reader]
+      Writer[rtt_io.Writer]
+      OutQ((출력 큐))
+      InQ((입력 큐))
+      Events[events.EventBus]
+      Dispatcher[pipeline.OutputDispatcher]
+    end
+
+    subgraph Sinks
+      Stdout[StdoutSink]
+      File[FileSink]
+      TelnetS[TelnetSink]
+    end
+
+    subgraph Sources
+      StdinSrc[StdinSource]
+      TelnetSrc[TelnetSource]
+    end
+
+    Telnet[telnet_server.py<br/>asyncio TCP Server]
+
+    Args --> Cfg --> Supervisor
+    Supervisor -->|connect/rtt_start| Reader
+    Supervisor -->|connect/rtt_start| Writer
+    Reader --> OutQ
+    OutQ --> Dispatcher
+    Dispatcher --> Stdout & File & TelnetS
+    StdinSrc & TelnetSrc --> InQ --> Writer
+    Telnet --- TelnetS
+    Telnet --- TelnetSrc
+    Events --> OutQ
+  </pre>
+
+  <ul>
+    <li><strong>하나의 asyncio 루프</strong>가 모든 태스크를 운영. pylink 동기 호출은 <code>asyncio.to_thread()</code>로 오프로드 — 이벤트 루프 블로킹 방지.</li>
+    <li>Reader/Writer는 Connector가 연결 확립 후 기동. 끊김 감지 시 중단 후 재기동.</li>
+    <li>모든 타겟 출력은 <code>OutQ</code> 하나로 수렴 → 각 Sink가 복제 소비. 입력도 <code>InQ</code> 하나로 수렴.</li>
+    <li><code>EventBus</code>는 상태 메시지(연결/끊김/재시도)를 <code>OutQ</code>로 흘려보내 Sink에 일관된 prefix로 표시.</li>
+  </ul>
+
+  <h2 id="fsm">5. 끊김 감지 &amp; 재연결 FSM</h2>
+  <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Connecting
+    Connecting --> Connecting: 실패 (retry_interval_ms 후 재시도)
+    Connecting --> Connected: connect() 성공 + target_connected() True + rtt_start() 성공
+    Connected --> Disconnected: rtt_read/write 예외 발생 (이벤트형)
+    Connected --> Disconnected: 주기 폴링에서 target_connected() False (폴링형)
+    Connected --> Disconnected: CB 스냅샷 변경 감지
+    Disconnected --> Connecting: teardown 후 즉시
+    Connected --> [*]: 사용자 Ctrl+C
+    Disconnected --> [*]: 사용자 Ctrl+C
+  </pre>
+
+  <ul>
+    <li><strong>이벤트형 감지</strong>: Reader/Writer task가 <code>JLinkException</code> 포착 즉시 Supervisor에 취소 통지.</li>
+    <li><strong>폴링형 감지</strong>: <code>poll_interval_ms</code> (기본 100 ms) 간격으로 <code>target_connected()</code> + <code>memory_read32(CB)</code> 병행 확인.</li>
+    <li><strong>CB 변경 감지</strong>: 100 ms 주기로 CB 헤더 + 버퍼 메타 비교. 변경 시 강제 재연결로 pylink 캐시 refresh.</li>
+    <li>기본 <code>retry_interval_ms</code> = <strong>100 ms</strong> (AC1/AC2의 1초 이내 달성 + USB 부하 적정).</li>
+  </ul>
+
+  <h2 id="cb-change">6. CB 변경 감지 시퀀스 (부트로더 → 앱 전환)</h2>
+  <pre class="mermaid">
+sequenceDiagram
+    participant BL as Bootloader
+    participant APP as App (CM3)
+    participant CB as _SEGGER_RTT (0x20000000)
+    participant SV as supervise (host)
+    participant RS as run (host)
+
+    BL->>CB: _DoInit (aUp[0] 세팅)
+    Note over SV: _last_cb_snapshot = {up[0]=0xA..}
+    SV->>CB: 100 ms마다 read → 변화 없음
+    BL->>APP: jump
+    APP->>CB: SEGGER_RTT_ConfigUpBuffer(1, ...)
+    APP->>CB: aUp[1] 세팅 (0xB..)
+    SV->>CB: 다음 폴링 read
+    SV->>SV: baseline != current → WARN + return
+    RS->>RS: teardown + reconnect + _rtt_start
+    Note over RS: pylink 캐시 refresh → 앱 채널 정상 수신
+  </pre>
+
+  <h3>CB 레이아웃 (Cortex-M 32-bit, little-endian)</h3>
+  <pre class="language-text"><code>offset  0..15 : acID[16]                 "SEGGER RTT\0\0\0\0\0\0"
+offset 16..19 : MaxNumUpBuffers   (int32)
+offset 20..23 : MaxNumDownBuffers (int32)
+offset 24 ..  : aUp[N]   — 각 24바이트 (sName, pBuffer, SizeOfBuffer, WrOff, RdOff, Flags)
+                                                         ↑ 스냅샷 대상 3개 필드
+offset 24 + N*24 .. : aDown[M]  — 각 24바이트 (동일 레이아웃)</code></pre>
+
+  <p>비교 대상: <code>aUp[i].pBuffer</code>, <code>SizeOfBuffer</code>, <code>Flags</code> / <code>aDown[i]</code> 동일. <code>WrOff</code>/<code>RdOff</code>는 runtime 변동 값이라 제외.</p>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    <code>cb_search.mode=auto</code>는 CB 주소를 모르므로 이 보강이 적용되지 않습니다.
+    Sound1 기본은 <code>fixed 0x20000000</code>이라 해당 없음.
+  </div>
+
+  <h2 id="config">7. 설정 파일 스펙 (YAML)</h2>
+  <p><code>profiles/sound1.yaml</code> 기본 예시:</p>
+  <pre class="language-yaml"><code>target:
+  device: "Cortex-M3"          # E8300은 SEGGER 공식 미등록 → Cortex-M3 generic
+  interface: "SWD"             # SWD | JTAG
+  speed_khz: 4000
+
+rtt:
+  up_channel: 0
+  down_channel: 0
+  cb_search:
+    mode: fixed                # auto | fixed | range
+    address: 0x20000000        # Sound1 실측 RTT CB 주소
+    # mode: auto               # 다른 타겟 재사용 시
+    # mode: range
+    # start:  0x20000000
+    # length: 0x20000
+
+reconnect:
+  retry_interval_ms: 100       # 연결 실패 시 재시도 간격
+  poll_interval_ms:  100       # target_connected() 폴링 주기
+  max_retries: -1              # -1 = 무한
+
+read:
+  poll_interval_ms: 10         # RTT up 폴링 (100Hz)
+  chunk_bytes: 1024
+
+write:
+  line_terminator: "\n"        # "" | "\n" | "\r\n" | "\x0A\x00" 등
+  mode: line                   # line | raw
+
+output:
+  stdout: true
+  logfile: null                # 경로 지정 시 활성: "./logs/rtt.log"
+  timestamp: false
+  event_prefix: "[AUTO-RTT]"
+
+telnet:
+  enabled: true
+  host: "127.0.0.1"
+  port: 19021                  # TeraTerm에서 telnet 127.0.0.1 19021
+  allow_multi_client: true</code></pre>
+
+  <h2 id="cli">8. CLI 스펙</h2>
+  <pre class="language-text"><code>auto-rtt-viewer [options]
+
+필수:
+  (기본 프로파일 사용 시 옵션 없이 실행 가능)
+
+옵션:
+  --profile PATH          YAML 프로파일 경로 (기본: 내장 sound1.yaml)
+  --device NAME           오버라이드: J-Link device name
+  --interface {SWD,JTAG}  오버라이드: 인터페이스
+  --speed KHZ             오버라이드: clock speed
+  --serial SN             J-Link Serial Number 강제 지정
+  --logfile PATH          로그 파일 경로 (append)
+  --no-stdout             stdout 출력 비활성
+  --telnet-port PORT      Telnet 포트 오버라이드
+  --no-telnet             Telnet 서버 비활성
+  --no-stdin              프로세스 stdin 입력 모드 비활성 (기본: 활성)
+  --timestamp             라인별 타임스탬프 prefix
+  -v, --verbose           상태 메시지 상세도 ↑
+  -q, --quiet             상태 메시지 상세도 ↓
+  --version               버전 출력
+  -h, --help              도움말</code></pre>
+
+  <h2 id="types">9. 핵심 타입 / 인터페이스 스케치</h2>
+  <pre class="language-python"><code># config.py
+@dataclass
+class TargetConfig:
+    device: str
+    interface: Literal["SWD", "JTAG"]
+    speed_khz: int
+
+@dataclass
+class RttConfig:
+    up_channel: int
+    down_channel: int
+    cb_search: CbSearch          # mode + 주소/범위
+
+@dataclass
+class ReconnectConfig:
+    retry_interval_ms: int
+    poll_interval_ms:  int
+    max_retries: int
+
+# (나머지 ReadConfig, WriteConfig, OutputConfig, TelnetConfig 유사)
+
+# sinks.py
+class Sink(Protocol):
+    async def emit(self, chunk: bytes, meta: Meta) -> None: ...
+    async def close(self) -> None: ...
+
+# sources.py
+class Source(Protocol):
+    async def run(self, queue: asyncio.Queue[bytes]) -> None: ...
+
+# connector.py
+class JLinkConnector:
+    def __init__(self, cfg: AppConfig, events: EventBus,
+                 out_queue: asyncio.Queue, in_queue: asyncio.Queue) -> None: ...
+    async def run(self) -> None: ...</code></pre>
+
+  <h2 id="steps">10. 구현 단계 (Step 1~11)</h2>
+  <table>
+    <thead><tr><th>#</th><th>단계</th><th>내용</th><th>산출</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Skeleton</td><td><code>src/auto_rtt_viewer/*</code> 빈 모듈, <code>pyproject.toml</code></td><td>import 가능한 패키지</td></tr>
+      <tr><td>2</td><td>Config</td><td>YAML 로더, dataclass, <code>profiles/sound1.yaml</code></td><td><code>test_config.py</code> 통과</td></tr>
+      <tr><td>3</td><td>Connector (기초)</td><td>연결 + stdout 상태 메시지만, Reader/Writer 없이 재연결 루프 검증</td><td>수동 테스트 가능</td></tr>
+      <tr><td>4</td><td>Reader</td><td>RTT up 채널 → <code>OutQ</code> → StdoutSink</td><td>실보드 수동 검증</td></tr>
+      <tr><td>5</td><td>Writer</td><td><code>InQ</code> ← StdinSource → RTT down</td><td>양방향 확인</td></tr>
+      <tr><td>6</td><td>FileSink</td><td>로그 파일 append</td><td>AC3 충족</td></tr>
+      <tr><td>7</td><td>Telnet</td><td><code>telnet_server.py</code> 양방향</td><td>AC4/AC5 충족</td></tr>
+      <tr><td>8</td><td>Events</td><td>타임스탬프·prefix·색상(선택)</td><td>AC9 충족</td></tr>
+      <tr><td>9</td><td>CLI 완성</td><td>argparse + 오버라이드</td><td>문서화 기반</td></tr>
+      <tr><td>10</td><td>테스트</td><td>config 단위 테스트 + mock pylink connector 테스트</td><td><code>pytest</code> 통과</td></tr>
+      <tr><td>11</td><td>문서</td><td>사용방법·시험 절차 작성</td><td>전달 가능</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="deps">11. 의존성</h2>
+  <p><code>pyproject.toml</code>의 <code>dependencies</code>:</p>
+  <pre class="language-text"><code>pylink-square>=1.6
+pyyaml>=6.0</code></pre>
+  <p>개발 의존성 (<code>[project.optional-dependencies].dev</code>):</p>
+  <pre class="language-text"><code>pytest>=8.0
+pytest-asyncio>=0.23</code></pre>
+
+  <h2 id="open-decisions">12. 미결정 항목 → 결정 정리</h2>
+  <p><a href="requirements.html#open">요구사항 §8 위임 항목</a>의 처리 결과.</p>
+  <table>
+    <thead><tr><th>항목</th><th>결정</th></tr></thead>
+    <tbody>
+      <tr><td>구현 언어</td><td><strong>Python 3.10+</strong></td></tr>
+      <tr><td>J-Link 제어</td><td><strong>pylink-square</strong> (CLI 래핑 미사용)</td></tr>
+      <tr><td>설정 파일 포맷</td><td><strong>YAML</strong></td></tr>
+      <tr><td>Telnet 멀티 클라이언트</td><td><strong>허용</strong> (기본값). 입력은 도착 순으로 InQ에 직렬화</td></tr>
+      <tr><td>stdin 라인/raw</td><td><strong>line 모드 기본</strong>, <code>write.mode: raw</code> 옵션으로 즉시 전송</td></tr>
+      <tr><td>로그 회전</td><td><strong>단일 파일</strong>로 시작. 회전은 범위 외 (필요 시 향후 추가)</td></tr>
+      <tr><td>의존성 관리</td><td><strong>pip + pyproject.toml + venv</strong></td></tr>
+      <tr><td>재연결 폴링 간격</td><td><strong>100 ms</strong> 기본값</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="user-approval">13. 사용자 승인 항목 (구현 단계 게이트)</h2>
+  <ol>
+    <li><strong>Telnet 포트 19021</strong> — SEGGER 기본값과 동일. GUI를 안 쓰므로 충돌 없음.</li>
+    <li><strong><code>write.line_terminator</code> 기본값 <code>\n</code></strong> — Sound1 펌웨어의 RTT 파서 기대값에 맞춰 실테스트에서 조정.</li>
+    <li><strong>패키지명 <code>auto_rtt_viewer</code></strong> — 명시적 네이밍 채택.</li>
+    <li><strong>프로파일 기본값</strong> — <code>sound1.yaml</code> 한 개만 포함 (다른 타겟 샘플은 추후 추가 시점에 결정).</li>
+  </ol>
+
+  <h2 id="risks">14. 위험 관리</h2>
+  <table>
+    <thead><tr><th>리스크</th><th>가능성</th><th>영향</th><th>완화</th></tr></thead>
+    <tbody>
+      <tr><td>E8300이 SEGGER 공식 미등록 → <code>Cortex-M3</code> generic 연결 실패 가능</td><td>중</td><td>중</td><td>연결 실패 시 상세 에러 메시지 + 설정 오버라이드 가이드, <code>cb_search.mode: range</code>로 fallback</td></tr>
+      <tr><td><code>rtt_start()</code> auto-detect 실패</td><td>중</td><td>중</td><td>Sound1은 <code>fixed 0x20000000</code>으로 회피. 타 타겟 재사용 시 <code>range</code> fallback + 사용자에게 명확히 안내</td></tr>
+      <tr><td>전원 ON 순간 너무 이른 connect 시도 → 타겟 부팅 전 쓰기 실패</td><td>높음</td><td>낮음</td><td>100 ms 간격 재시도면 수 cycle 내 복구. 로그로 투명화</td></tr>
+      <tr><td>USB 드라이버 점유 충돌 (J-Link RTT Viewer GUI가 붙어있는 경우 등)</td><td>낮음</td><td>중</td><td>명시적 에러 메시지 + 사용자 안내. 자동 재시도 루프로 점유 해제 시 즉시 복구</td></tr>
+      <tr><td>Windows asyncio Proactor vs Selector</td><td>낮음</td><td>낮음</td><td>기본 Proactor로 동작 확인. subprocess 사용이 없어 대부분 OK</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="verify">15. 검증 절차 (단계별 / 최종)</h2>
+  <h3>15.1 단계별</h3>
+  <ul>
+    <li>각 commit 직전 <code>git status</code> + <code>git diff --stat</code></li>
+    <li>영향 파일이 계획 범위 내인지 (오버런 방지)</li>
+    <li>Step 1~3은 자체 검증, Step 4~7은 실보드 수동 검증</li>
+  </ul>
+  <h3>15.2 최종</h3>
+  <ul>
+    <li>수용 기준(<a href="requirements.html#acceptance">요구사항 §5</a>) 전 항목 확인</li>
+    <li><code>pytest</code> 통과 (Step 10)</li>
+    <li>사용방법·시험 절차 문서 작성 후 사용자 인수 (Step 11)</li>
+  </ul>
+
+  <nav class="page-nav">
+    <a class="prev" href="requirements.html"><span class="label">← 이전</span>요구사항</a>
+    <a class="next" href="rtt-reference.html"><span class="label">다음 →</span>J-Link RTT 메커니즘</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/tasks/core/20260421_initial-development/계획.md</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme: t, securityLevel: 'loose',
+      themeVariables: { fontFamily: 'inherit' } });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

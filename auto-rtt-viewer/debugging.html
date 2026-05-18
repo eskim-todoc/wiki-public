@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>디버깅 가이드 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 디버깅 가이드</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>디버깅 가이드</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    실행 중 관찰되는 현상의 근거를 코드와 연결하고, 각 주요 기능의 동작 원리·호출 순서·실패 처리를
+    한 페이지에 모은 run-time 진단 맵입니다. 다른 세션(사람 또는 AI)이 즉시 컨텍스트를 잡고
+    디버깅에 착수할 수 있도록 작성되었습니다.
+  </p>
+
+  <h2 id="purpose">1. 문서 목적</h2>
+  <ol>
+    <li>실행 중 관찰되는 현상(로그·동작)의 근거를 코드와 연결.</li>
+    <li>각 주요 기능의 동작 원리·호출 순서·실패 처리를 한 곳에 요약.</li>
+    <li>트러블슈팅 시 확인할 포인트를 바로 찾을 수 있게.</li>
+    <li>최근 변경 이력을 남겨 "지난번에 뭐가 바뀌었지?"를 추적.</li>
+  </ol>
+
+  <h2 id="status">2. 현재 구현 상태 (TL;DR)</h2>
+  <table>
+    <thead><tr><th>영역</th><th>기능</th><th>구현</th></tr></thead>
+    <tbody>
+      <tr><td>연결</td><td><code>pylink.JLink.open()</code> + SWD/JTAG + <code>connect(device, speed)</code></td><td>완료</td></tr>
+      <tr><td>연결</td><td>Sound1 기본 프로파일 내장 (device=<code>Cortex-M3</code>, speed=<strong>4000 kHz</strong>, CB=<code>0x20000000</code> fixed)</td><td>완료</td></tr>
+      <tr><td>연결</td><td>J-Link <strong>SN 세션 기억</strong> (프로세스 수명, 디스크 저장 없음)</td><td>완료</td></tr>
+      <tr><td>연결</td><td>CLI <code>--serial SN</code> 강제 지정</td><td>완료</td></tr>
+      <tr><td>연결</td><td>CB 검색 모드: <code>fixed</code> / <code>auto</code> / <code>range</code></td><td>완료</td></tr>
+      <tr><td>끊김 감지</td><td><code>target_connected()</code> 폴링 + <strong><code>memory_read32(CB)</code></strong> 병행 (이중화)</td><td>완료</td></tr>
+      <tr><td>끊김 감지</td><td>Reader/Writer 예외 → <code>events.warn</code> + re-raise → 메인 루프 재연결</td><td>완료</td></tr>
+      <tr><td>CB 변경</td><td>재연결 시 스냅샷 diff 로그 (<code>RTT 버퍼: / 유지: / 변경:</code>)</td><td>완료</td></tr>
+      <tr><td>CB 변경</td><td><strong>연결 유지 중 0.1초 주기 감시 → 변경 시 자동 <code>rtt_stop</code>+<code>rtt_start</code> refresh</strong></td><td>완료 (재연결 사이클 경유)</td></tr>
+      <tr><td>이벤트</td><td><strong>연속 연결 실패 스팸 억제</strong> (30초마다 요약 1회, 사유 바뀌면 즉시)</td><td>완료</td></tr>
+      <tr><td>이벤트</td><td><code>EventBus</code> prefix + <code>HH:MM:SS.mmm</code> 타임스탬프</td><td>완료</td></tr>
+      <tr><td>출력</td><td>stdout / file(append) / Telnet 동시 fan-out</td><td>완료</td></tr>
+      <tr><td>출력</td><td>라인별 타임스탬프(<code>--timestamp</code>), 부분 라인 버퍼링</td><td>완료</td></tr>
+      <tr><td>입력</td><td>stdin (기본 켜짐, <code>--no-stdin</code>으로 끔) / Telnet(<code>127.0.0.1:19021</code>) → target down channel</td><td>완료</td></tr>
+      <tr><td>CLI</td><td><code>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp/--version</code></td><td>완료</td></tr>
+      <tr><td>테스트</td><td><code>pytest</code> 기준 <strong>12+ passed</strong> (config 4 / pipeline 3 / telnet_iac 5+ / connector mocks)</td><td>완료</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="architecture-overview">3. 아키텍처 개요</h2>
+  <pre class="mermaid">
+flowchart LR
+    subgraph Host[auto-rtt-viewer 프로세스]
+        CLI[cli.py<br/>argparse + asyncio.run] --> CFG[config.py<br/>AppConfig.from_yaml]
+        CFG --> CONN[connector.py<br/>JLinkConnector.run]
+        CONN --> EV[events.py<br/>EventBus]
+        CONN -->|reader| RR[rtt_io.py<br/>RttReader]
+        CONN -->|writer| RW[rtt_io.py<br/>RttWriter]
+        CONN -->|supervise| SV[("_supervise<br/>target_connected<br/>+ CB probe<br/>+ CB snapshot diff")]
+        RR --> OQ((out_queue))
+        EV --> OQ
+        OQ --> DISP[pipeline.py<br/>OutputDispatcher]
+        DISP --> SO[sinks.py<br/>StdoutSink]
+        DISP --> SF[sinks.py<br/>FileSink]
+        DISP --> ST[telnet_server.py<br/>TelnetServer]
+        IS[sources.py<br/>StdinSource] --> IQ((in_queue))
+        ST --> IQ
+        IQ --> RW
+    end
+
+    CONN <-->|pylink / JLinkARM.dll| PROBE[J-Link<br/>Probe]
+    PROBE <-->|SWD / JTAG| MCU[Target MCU<br/>Cortex-M3]
+    MCU <--> RAM[("Target RAM<br/>_SEGGER_RTT @ 0x20000000<br/>aUp/aDown 버퍼")]
+  </pre>
+
+  <h3>큐 의미</h3>
+  <ul>
+    <li><code>out_queue (bytes)</code>: <strong>타겟에서 읽은 RTT up 바이트 + EventBus 상태 메시지</strong>가 합쳐지는 단일 큐. 각 sink가 복제 소비.</li>
+    <li><code>in_queue (bytes)</code>: Telnet/stdin이 보낸 호스트→타겟 바이트. <code>RttWriter</code>가 소비해 down channel에 write.</li>
+  </ul>
+  <p><strong>pylink 동기 호출은 전부 <code>asyncio.to_thread()</code>로 오프로드</strong> — 이벤트 루프 블로킹 방지.</p>
+
+  <h2 id="runtime-flow">4. 런타임 흐름 — 연결부터 종료까지</h2>
+  <h3>4.1 전체 상태 머신</h3>
+  <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Connecting
+    Connecting --> Connecting: _connect 실패 (retry_interval_ms 후 재시도)
+    Connecting --> Connected: _connect OK + _rtt_start OK + _snapshot_and_log_cb OK
+    Connected --> Disconnected: supervise return<br/>(target_connected=False,<br/>memory_read 예외,<br/>CB 변경 감지)
+    Connected --> Disconnected: reader/writer 예외 (JLinkException 등)
+    Disconnected --> Connecting: teardown 후 즉시
+    Connected --> [*]: Ctrl+C
+    Connecting --> [*]: Ctrl+C
+  </pre>
+
+  <h3>4.2 <code>JLinkConnector.run()</code> 골격</h3>
+  <pre class="language-python"><code>while True:
+    jlink = _connect()            # (1)
+    if jlink is None:
+        sleep(retry_interval); continue
+
+    _rtt_start(jlink)             # (2) CB 검색 (mode에 따라 fixed/auto/range)
+    _events.info("RTT 연결 완료 ...")
+    _snapshot_and_log_cb(jlink)   # (3) CB 스냅샷 → 로그 (첫/유지/변경)
+
+    tasks = [reader, writer, supervisor]
+    wait FIRST_COMPLETED
+    cancel pending; teardown jlink
+    _events.warn("연결 끊김. 재연결 시도 중.")</code></pre>
+
+  <p><strong>(1) <code>_connect</code>:</strong></p>
+  <ul>
+    <li><code>_open_jlink(jlink)</code> — SN 선택 로직 (§5.1)</li>
+    <li><code>jlink.set_tif(SWD|JTAG)</code> + <code>jlink.connect(device, speed)</code></li>
+    <li><code>target_connected()</code> sanity check</li>
+    <li>성공 시 <code>_remember_serial()</code> + <code>_reset_fail_state()</code></li>
+    <li>실패 시 <code>_emit_connect_failure(exc)</code> (§5.3) + 리턴 None</li>
+  </ul>
+
+  <p><strong>(2) <code>_rtt_start</code>:</strong></p>
+  <ul>
+    <li><code>fixed</code> → <code>jlink.rtt_start(cb.address)</code> (Sound1 = <code>0x20000000</code>)</li>
+    <li><code>range</code> → <code>SetRTTSearchRanges</code> exec 후 <code>rtt_start()</code></li>
+    <li><code>auto</code> → 인자 없이 <code>rtt_start()</code></li>
+  </ul>
+
+  <p><strong>(3) <code>_snapshot_and_log_cb</code>:</strong></p>
+  <ul>
+    <li>CB 주소가 있으면(<code>_probe_address()</code>) 헤더 24B + <code>aUp[N]</code>(24B×N) + <code>aDown[M]</code>(24B×M) 읽어 파싱.</li>
+    <li><code>_last_cb_snapshot</code> 대비 <code>첫 연결 / 유지 / 변경</code> 중 하나 로그.</li>
+    <li>스냅샷을 <code>_last_cb_snapshot</code>에 갱신 → §5.4의 supervise baseline 역할.</li>
+  </ul>
+
+  <h3>4.3 동시 태스크 3개</h3>
+  <table>
+    <thead><tr><th>태스크</th><th>종료 조건</th><th>종료 시 의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>rtt-reader</code></td><td><code>rtt_read</code> 예외</td><td>SWD/RTT I/O 오류 → 연결 끊김으로 간주</td></tr>
+      <tr><td><code>rtt-writer</code></td><td><code>rtt_write</code> 예외</td><td>동상</td></tr>
+      <tr><td><code>rtt-supervisor</code></td><td>target_connected=False / probe 예외 / <strong>CB 변경 감지</strong></td><td>§5.2, §5.4</td></tr>
+    </tbody>
+  </table>
+  <p><code>FIRST_COMPLETED</code>에서 돌아온 순간 나머지를 cancel하고 teardown.</p>
+
+  <h2 id="key-features">5. 주요 기능 동작 세부</h2>
+
+  <h3 id="sn-memory">5.1 J-Link 선택 (SN 세션 기억)</h3>
+  <p><strong>선택 우선순위 (<code>_open_jlink</code>):</strong></p>
+  <ol>
+    <li><code>cfg.target.serial_no</code> — CLI <code>--serial</code> 또는 프로파일 YAML <code>target.serial_no</code>.</li>
+    <li><code>self._session_sn</code> — 같은 프로세스 내 이전 연결에서 기억한 SN.</li>
+    <li>(없음) → <code>pylink.JLink.open()</code> — 장치 1개면 자동, 2개 이상이면 SEGGER 선택 창.</li>
+  </ol>
+
+  <pre class="language-python"><code>preferred = self._cfg.target.serial_no or self._session_sn
+if preferred: jlink.open(serial_no=preferred)   # 실패 시 warn + jlink.open() fallback
+else:         jlink.open()</code></pre>
+
+  <p><strong>기억(<code>_remember_serial</code>):</strong></p>
+  <ul>
+    <li>연결 성공 직후 <code>jlink.serial_number</code> 읽어 <code>self._session_sn</code>에 저장.</li>
+    <li>이전 값과 다를 때만 <code>INFO J-Link SN=... 기억</code> 발행.</li>
+    <li><strong>파일 저장 없음</strong>. <kbd>Ctrl</kbd>+<kbd>C</kbd> 종료 = 기억 휘발.</li>
+  </ul>
+
+  <pre class="mermaid">
+sequenceDiagram
+    participant U as 사용자
+    participant A as auto-rtt-viewer
+    participant P as pylink
+    Note over A: 실행 시작 (_session_sn=None)
+    U->>A: auto-rtt-viewer
+    A->>P: open()  (SN 미지정)
+    P-->>U: SEGGER 선택창 (2개 이상일 때만)
+    U->>P: SN=123456789 선택
+    P-->>A: open OK
+    A->>P: serial_number
+    P-->>A: 123456789
+    A->>A: _session_sn = 123456789
+    Note over A: 전원 OFF/ON, JFlash 등으로 재연결 트리거
+    A->>P: open(serial_no=123456789) → 선택창 없이 즉시 열림
+  </pre>
+
+  <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_open_jlink</code> / <code>_remember_serial</code>.</p>
+
+  <h3 id="dual-detect">5.2 연결 끊김 감지 이중화</h3>
+  <p><code>target_connected()</code>만 폴링하면 J-Link DLL 내부 캐시 때문에 전원 OFF를 즉시 감지 못 하는 경우가 있음 (<a href="rtt-reference.html#disconnect-points">RTT 메커니즘 §2</a>). 보강:</p>
+  <pre class="language-python"><code>every poll_interval_ms (기본 100 ms):
+    if not target_connected: disconnect
+    if probe_addr: memory_read32(probe_addr, 1)  # SWD 무응답이면 여기서 예외</code></pre>
+  <ul>
+    <li><code>probe_addr</code> = <code>cb_search.mode=fixed</code> → <code>address</code>, <code>mode=range</code> → <code>start</code>, <code>mode=auto</code> → None (이 경우 보강 미적용).</li>
+    <li>Reader/Writer도 예외를 잡아 <code>events.warn("RTT 읽기/쓰기 실패 (...)")</code> 발행 후 re-raise → 태스크 종료 → 메인 루프 재연결.</li>
+  </ul>
+  <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_supervise</code> / <code>_probe_address</code>, <code>rtt_io.py</code>.</p>
+
+  <h3 id="spam-suppress">5.3 연결 실패 이벤트 스팸 억제</h3>
+  <p>보드 전원 OFF 상태에서 재시도 간격(100 ms)마다 같은 WARN이 반복 찍히는 문제를 막는다.</p>
+  <table>
+    <thead><tr><th>조건</th><th>동작</th></tr></thead>
+    <tbody>
+      <tr><td>첫 실패</td><td><code>WARN 연결 실패: &lt;사유&gt;</code></td></tr>
+      <tr><td>같은 사유 반복</td><td>조용히 카운트만</td></tr>
+      <tr><td>같은 사유 유지 + 30초 경과</td><td><code>WARN 연결 실패 지속 (N회 동안 같은 사유) — 최근: ...</code></td></tr>
+      <tr><td>사유 변경</td><td>즉시 새 <code>WARN 연결 실패: &lt;새 사유&gt;</code></td></tr>
+      <tr><td>연결 성공</td><td><code>_reset_fail_state()</code> → 다음 실패는 다시 "첫 실패" 취급</td></tr>
+    </tbody>
+  </table>
+  <p>상수: <code>FAIL_SUMMARY_INTERVAL_S = 30.0</code> (<code>connector.py:16</code>).</p>
+  <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_emit_connect_failure</code> / <code>_reset_fail_state</code>.</p>
+
+  <h3 id="cb-snapshot">5.4 CB 스냅샷 + 실시간 변경 감지</h3>
+  <p><strong>목적</strong>: 부트로더→앱 전환처럼 <strong>연결이 유지된 채</strong> 타겟이 <code>_SEGGER_RTT.aUp[]</code> 내용을 바꾸면 pylink의 내부 캐시(<code>rtt_start</code> 시점의 버퍼 메타)가 stale이 됨 → 새 채널의 데이터를 못 읽게 됨. 이를 자동 감지해 <code>rtt_start</code>를 다시 호출하도록 강제.</p>
+
+  <p><strong>CB 레이아웃 (Cortex-M 32-bit, little-endian):</strong></p>
+  <pre class="language-text"><code>offset  0..15 : acID[16]                 "SEGGER RTT\0\0\0\0\0\0"
+offset 16..19 : MaxNumUpBuffers   (int32)
+offset 20..23 : MaxNumDownBuffers (int32)
+offset 24 .. : aUp[N]   — 각 24바이트 (sName, pBuffer, SizeOfBuffer, WrOff, RdOff, Flags)
+                                                         ↑ 스냅샷 대상 3개 필드
+offset 24 + N*24 .. : aDown[M]  — 각 24바이트 (동일 레이아웃)</code></pre>
+  <p>비교 대상: <code>aUp[i].pBuffer</code>, <code>SizeOfBuffer</code>, <code>Flags</code> / <code>aDown[i]</code> 동일. (<code>WrOff/RdOff</code>는 runtime 변동 값이라 제외.)</p>
+
+  <p><strong>두 시점에서 CB를 읽음:</strong></p>
+  <table>
+    <thead><tr><th>시점</th><th>함수</th><th>결과</th></tr></thead>
+    <tbody>
+      <tr><td>연결 성공 직후</td><td><code>_snapshot_and_log_cb</code></td><td><code>첫 연결</code> / <code>유지</code> / <code>변경</code> 로그 + <code>_last_cb_snapshot</code> 갱신</td></tr>
+      <tr><td>연결 유지 중 (100 ms 주기)</td><td><code>_supervise</code>가 <code>_read_cb_snapshot</code> 재호출 후 baseline 비교</td><td>다르면 <code>WARN RTT CB 변경 감지 — pylink 캐시 refresh 위해 재연결 (변경점: ...)</code> + return</td></tr>
+    </tbody>
+  </table>
+
+  <p>supervise가 return하면 메인 루프 → teardown → reconnect → <code>_rtt_start</code> 재호출 → <strong>pylink 내부 버퍼 캐시가 새 주소로 갱신</strong>되고 <code>_snapshot_and_log_cb</code>가 <code>변경:</code> 로그 한 줄 더 남김.</p>
+
+  <pre class="mermaid">
+sequenceDiagram
+    participant BL as Bootloader
+    participant APP as App (CM3)
+    participant CB as _SEGGER_RTT (0x20000000)
+    participant SV as supervise (host)
+    participant RS as run (host)
+
+    BL->>CB: _DoInit (aUp[0] 세팅)
+    Note over SV: _last_cb_snapshot = {up[0]=0xA..}
+    SV->>CB: 100 ms마다 read → 변화 없음
+    BL->>APP: jump
+    APP->>CB: SEGGER_RTT_ConfigUpBuffer(1, ...)
+    APP->>CB: aUp[1] 세팅 (0xB..)
+    SV->>CB: 다음 폴링 read
+    SV->>SV: baseline != current → WARN + return
+    RS->>RS: teardown + reconnect + _rtt_start
+    Note over RS: pylink 캐시 refresh → 앱 채널 정상 수신
+  </pre>
+
+  <p><strong><code>cb_search.mode=auto</code></strong>는 CB 주소를 모르므로 이 보강이 적용되지 않는다. Sound1 기본은 <code>fixed 0x20000000</code>이라 해당 없음.</p>
+  <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_snapshot_and_log_cb</code> / <code>_read_cb_snapshot</code> / <code>_parse_buffers</code> / <code>_format_cb_diff</code> / <code>_supervise</code>.</p>
+
+  <h3 id="reconnect-triggers">5.5 재연결 사이클</h3>
+  <p>재연결 트리거 6가지 — 모두 동일한 경로(teardown → <code>while True</code> top → <code>_connect</code>)로 수렴.</p>
+  <table>
+    <thead><tr><th>트리거</th><th>주된 원인</th></tr></thead>
+    <tbody>
+      <tr><td><code>target_connected()=False</code></td><td>타겟 전원 OFF, SWD 결선 불량</td></tr>
+      <tr><td><code>memory_read32(probe_addr)</code> 예외</td><td>전원 OFF 중 SWD 무응답</td></tr>
+      <tr><td><code>rtt_read/write</code> 예외</td><td>RTT CB 파괴, 타겟 MCU halt 등</td></tr>
+      <tr><td><strong>CB 스냅샷 변경 감지</strong></td><td>부트로더→앱 재구성, 앱이 <code>ConfigUpBuffer</code> 호출</td></tr>
+      <tr><td><code>_rtt_start</code> 예외</td><td>CB 자동 검색 실패 (pylink #249 등)</td></tr>
+      <tr><td><code>_connect</code> 단계 예외</td><td>J-Link DLL 다른 프로세스 점유(JFlash), USB 분리 등</td></tr>
+    </tbody>
+  </table>
+  <p>재연결 간격 = <code>reconnect.retry_interval_ms</code> (기본 100 ms). 무한 재시도(<code>max_retries: -1</code>).</p>
+
+  <h2 id="log-scenarios">6. 예상 로그 시퀀스 (시나리오별)</h2>
+
+  <h3>6.1 정상 부팅</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 11:29:54.100 INFO  J-Link SN=602011057 기억 (이번 세션의 이후 재연결에 자동 적용)
+[AUTO-RTT] 11:29:54.245 INFO  RTT 연결 완료 (device=Cortex-M3, tif=SWD, speed=4000kHz, up_ch=0, down_ch=0)
+[AUTO-RTT] 11:29:54.312 INFO  RTT 버퍼: up[0]=0x20001000(1024B), down[0]=0x200014C4(16B)
+&lt;타겟 RTT 로그&gt;...</code></pre>
+
+  <h3>6.2 타겟 전원 OFF (스팸 억제)</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 11:35:10.002 WARN  타겟 응답 없음 (JLinkException: Target system has no power.) — 연결 끊김 판정
+[AUTO-RTT] 11:35:10.003 WARN  연결 끊김. 재연결 시도 중.
+[AUTO-RTT] 11:35:10.105 WARN  연결 실패: JLinkException: Target system has no power.
+# ... 같은 사유 반복, 로그 없음 ...
+[AUTO-RTT] 11:35:40.108 WARN  연결 실패 지속 (300회 동안 같은 사유) — 최근: JLinkException: Target system has no power.</code></pre>
+
+  <h3>6.3 전원 ON → 자동 재연결</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 11:36:12.402 INFO  J-Link 선택: SN=602011057 (세션 기억)
+[AUTO-RTT] 11:36:12.520 INFO  RTT 연결 완료 (device=Cortex-M3, tif=SWD, speed=4000kHz, up_ch=0, down_ch=0)
+[AUTO-RTT] 11:36:12.571 INFO  RTT 버퍼 유지: up[0]=0x20001000(1024B), down[0]=0x200014C4(16B)
+&lt;부트로더 초기 메시지 이어서 캡처&gt;...</code></pre>
+
+  <h3>6.4 부트로더 → 앱 전환 (연결 유지 중)</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 11:40:03.102 WARN  RTT CB 변경 감지 — pylink 캐시 refresh 위해 재연결 (변경점: up[1] -→0x20006000(512B))
+[AUTO-RTT] 11:40:03.103 WARN  연결 끊김. 재연결 시도 중.
+[AUTO-RTT] 11:40:03.220 INFO  J-Link 선택: SN=602011057 (세션 기억)
+[AUTO-RTT] 11:40:03.345 INFO  RTT 연결 완료 (device=Cortex-M3, tif=SWD, speed=4000kHz, up_ch=0, down_ch=0)
+[AUTO-RTT] 11:40:03.401 INFO  RTT 버퍼 변경: up[0]=0x20001000(1024B), up[1]=0x20006000(512B), down[0]=0x200014C4(16B) (변경점: up[1] -→0x20006000(512B))
+&lt;앱 로그 시작&gt;...</code></pre>
+
+  <h3>6.5 JFlash 다운로드 중</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 11:45:10.002 WARN  연결 실패: JLinkException: Could not open J-Link ... already in use
+# ... JFlash 진행 중 조용 ...
+[AUTO-RTT] 11:45:40.050 WARN  연결 실패 지속 (298회 동안 같은 사유) — 최근: JLinkException: Could not open J-Link ... already in use
+# JFlash 완료 순간
+[AUTO-RTT] 11:45:47.120 INFO  J-Link 선택: SN=602011057 (세션 기억)
+[AUTO-RTT] 11:45:47.245 INFO  RTT 연결 완료 (...)
+[AUTO-RTT] 11:45:47.301 INFO  RTT 버퍼: up[0]=0x20001000(1024B), down[0]=0x200014C4(16B)
+&lt;새 펌웨어 부팅 로그 이어서 캡처&gt;...</code></pre>
+
+  <h3>6.6 <kbd>Ctrl</kbd>+<kbd>C</kbd> 정상 종료</h3>
+  <pre class="language-text"><code>^C
+[AUTO-RTT] 사용자 중단(Ctrl+C) → 종료</code></pre>
+  <p>프로세스가 리턴 코드 130으로 종료. <code>jlink.rtt_stop</code> + <code>jlink.close</code> + 파일 플러시 + Telnet 소켓 정리.</p>
+
+  <h2 id="defaults">7. 기본 설정값 일람 (내장 Sound1 프로파일)</h2>
+  <p>출처: <code>src/auto_rtt_viewer/profiles/sound1.yaml</code></p>
+  <table>
+    <thead><tr><th>섹션</th><th>필드</th><th>값</th></tr></thead>
+    <tbody>
+      <tr><td>target</td><td>device</td><td><code>Cortex-M3</code></td></tr>
+      <tr><td>target</td><td>interface</td><td><code>SWD</code></td></tr>
+      <tr><td>target</td><td><strong>speed_khz</strong></td><td><strong><code>4000</code></strong></td></tr>
+      <tr><td>target</td><td>serial_no</td><td>(없음 → 세션 기억 또는 pylink 기본)</td></tr>
+      <tr><td>rtt</td><td>up_channel / down_channel</td><td><code>0</code> / <code>0</code></td></tr>
+      <tr><td>rtt</td><td>cb_search.mode</td><td><code>fixed</code></td></tr>
+      <tr><td>rtt</td><td>cb_search.address</td><td><code>0x20000000</code></td></tr>
+      <tr><td>reconnect</td><td>retry_interval_ms</td><td><code>100</code></td></tr>
+      <tr><td>reconnect</td><td>poll_interval_ms</td><td><code>100</code></td></tr>
+      <tr><td>reconnect</td><td>max_retries</td><td><code>-1</code> (무한)</td></tr>
+      <tr><td>read</td><td>poll_interval_ms</td><td><code>10</code> (100 Hz)</td></tr>
+      <tr><td>read</td><td>chunk_bytes</td><td><code>1024</code></td></tr>
+      <tr><td>write</td><td>line_terminator</td><td><code>"\n"</code></td></tr>
+      <tr><td>write</td><td>mode</td><td><code>line</code></td></tr>
+      <tr><td>output</td><td>stdout</td><td><code>true</code></td></tr>
+      <tr><td>output</td><td>logfile</td><td><code>null</code></td></tr>
+      <tr><td>output</td><td>timestamp</td><td><code>false</code></td></tr>
+      <tr><td>output</td><td>event_prefix</td><td><code>"[AUTO-RTT]"</code></td></tr>
+      <tr><td>telnet</td><td>enabled</td><td><code>true</code></td></tr>
+      <tr><td>telnet</td><td>host / port</td><td><code>127.0.0.1</code> / <code>19021</code></td></tr>
+      <tr><td>telnet</td><td>allow_multi_client</td><td><code>true</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>상수(코드):</p>
+  <ul>
+    <li><code>connector.py:16 FAIL_SUMMARY_INTERVAL_S = 30.0</code></li>
+    <li><code>connector.py:17 BUFFER_ENTRY_BYTES = 24</code> (SEGGER_RTT_BUFFER_{UP,DOWN} 구조체 크기)</li>
+    <li><code>connector.py:18 CB_HEADER_BYTES = 24</code></li>
+  </ul>
+
+  <h2 id="entrypoints">8. 코드 엔트리 포인트</h2>
+  <p>작업 시작 포인트부터 역순 탐색 경로.</p>
+  <table>
+    <thead><tr><th>파일</th><th>심볼</th><th>역할</th></tr></thead>
+    <tbody>
+      <tr><td><code>cli.py</code></td><td><code>main</code> / <code>build_parser</code></td><td>argparse + <code>AppConfig.from_yaml</code> + <code>asyncio.run(_amain(...))</code></td></tr>
+      <tr><td><code>cli.py</code></td><td><code>_amain</code></td><td>Dispatcher/Connector/TelnetServer/StdinSource 태스크 오케스트레이션</td></tr>
+      <tr><td><code>config.py</code></td><td><code>AppConfig.from_yaml</code> / <code>apply_overrides</code></td><td>프로파일 로드 + CLI override 적용</td></tr>
+      <tr><td><code>connector.py</code></td><td><code>JLinkConnector.run</code></td><td>재연결 루프 본체</td></tr>
+      <tr><td><code>connector.py</code></td><td><code>_connect</code> → <code>_open_jlink</code> → <code>_rtt_start</code> → <code>_snapshot_and_log_cb</code></td><td>연결 성립 체인</td></tr>
+      <tr><td><code>connector.py</code></td><td><code>_supervise</code></td><td>target_connected + probe + CB diff (§5.2, §5.4)</td></tr>
+      <tr><td><code>connector.py</code></td><td><code>_emit_connect_failure</code> / <code>_reset_fail_state</code></td><td>스팸 억제 (§5.3)</td></tr>
+      <tr><td><code>rtt_io.py</code></td><td><code>RttReader.run</code> / <code>RttWriter.run</code></td><td>RTT up/down 폴링 I/O, 예외 시 warn + re-raise</td></tr>
+      <tr><td><code>events.py</code></td><td><code>EventBus.info/warn/error</code></td><td><code>[AUTO-RTT] HH:MM:SS.mmm LEVEL 메시지</code> 포매팅 + <code>out_queue.put_nowait</code></td></tr>
+      <tr><td><code>pipeline.py</code></td><td><code>OutputDispatcher.run</code></td><td>out_queue → 모든 sink, 타임스탬프, 부분 라인 버퍼링</td></tr>
+      <tr><td><code>sinks.py</code></td><td><code>StdoutSink</code> / <code>FileSink</code></td><td>출력 sink</td></tr>
+      <tr><td><code>sources.py</code></td><td><code>StdinSource.run</code></td><td>stdin → in_queue (raw/line 모드)</td></tr>
+      <tr><td><code>telnet_server.py</code></td><td><code>TelnetServer</code></td><td>TCP 서버 + IAC 제거 + in_queue 푸시 / Sink 역할</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>데이터 클래스:</strong></p>
+  <ul>
+    <li><code>connector.BufferInfo(p_buffer, size, flags)</code> — 스냅샷 단위</li>
+    <li><code>connector.CbSnapshot(up, down)</code> — <code>tuple[BufferInfo, ...]</code>의 페어, <code>==</code>로 baseline 비교</li>
+    <li><code>config.TargetConfig/RttConfig/...</code> — dataclass</li>
+  </ul>
+
+  <h2 id="diagnosis">9. 진단·트러블슈팅 체크리스트</h2>
+
+  <h3 id="diag-no-log">9.1 "아무 로그도 안 나옴"</h3>
+  <ol>
+    <li><code>(.venv)</code> 활성화? 프롬프트 확인.</li>
+    <li><code>auto-rtt-viewer --version</code> 실행되는지.</li>
+    <li>J-Link 프로브 USB 연결 상태.</li>
+    <li><code>JLinkARM.dll</code>이 PATH에 있는지 (SEGGER SW 설치 확인).</li>
+    <li><code>auto-rtt-viewer --speed 1000</code> 같은 저속으로 시도.</li>
+    <li>다른 프로그램(JFlash / RTT Viewer GUI / Ozone)이 프로브 점유 중인지.</li>
+  </ol>
+
+  <h3 id="diag-bootloader-only">9.2 "부트로더 로그는 나오는데 앱 로그가 안 나옴"</h3>
+  <p>우선 로그를 보고 어느 시점인지 판단:</p>
+  <ul>
+    <li><code>RTT CB 변경 감지</code> 메시지가 한 번은 뜨고 그 뒤에 <code>RTT 버퍼 변경: ...</code>도 떴는가?
+      <ul>
+        <li><strong>예</strong>: 자동 refresh 정상 동작 중. 그래도 앱 로그가 없다면 앱이 up channel 0이 아닌 다른 채널에 쓰는지, 또는 앱이 실제로 write를 하는지 확인.</li>
+        <li><strong>아니오</strong>: CB 변경이 감지되지 않음. <code>cb_search.mode=auto</code>로 설정되어 있는지 프로파일 확인. fixed여야 감지 가능.</li>
+      </ul>
+    </li>
+    <li><code>up_channel</code> 설정이 앱이 쓰는 채널과 일치하는지. 프로파일의 <code>rtt.up_channel</code> vs 앱 코드의 <code>SEGGER_RTT_Write(N, ...)</code>.</li>
+    <li>CB 주소가 실제와 다른지. <code>jlink.memory_read8(0x20000000, 16)</code> 결과가 <code>"SEGGER RTT\0\0\0\0\0\0"</code>인지 확인 필요 (현 도구는 직접 노출 API 없음 — 수동 진단이면 SEGGER J-Link Commander에서 <code>mem 0x20000000 0x100</code> 참고).</li>
+  </ul>
+
+  <h3 id="diag-no-disc">9.3 "연결 끊김이 감지 안 됨"</h3>
+  <ul>
+    <li><code>cb_search.mode=fixed</code>인지 (auto/range는 부분 감지만).</li>
+    <li><code>reconnect.poll_interval_ms</code> 값(100 ms). 너무 크게 설정되지 않았는지.</li>
+    <li><code>target_connected</code> 자체가 False를 반환 안 해도 <code>memory_read32</code>가 예외를 던지므로 둘 중 하나는 걸려야 함. 둘 다 "통과"해서 끊김을 놓치는 경우는 SWD가 여전히 살아있다는 뜻.</li>
+  </ul>
+
+  <h3 id="diag-spam">9.4 "같은 에러가 계속 도배됨"</h3>
+  <ul>
+    <li>30초 요약 전이라면 정상. 31초 이상 지나도 새 WARN이 끊임없이 뜨면 <code>_emit_connect_failure</code>의 dedup 상태가 초기화되는 경로를 확인 (<code>_reset_fail_state</code>는 <code>_connect</code> 성공 시에만 호출됨).</li>
+  </ul>
+
+  <h3 id="diag-selector">9.5 "J-Link 선택창이 매번 뜸"</h3>
+  <ul>
+    <li><strong>같은 프로세스 내</strong>에서는 첫 연결 이후 뜨지 않아야 함. 뜬다면 <code>_open_jlink</code>가 <code>self._session_sn</code>을 못 읽는 상태 — 이전 연결이 <code>_remember_serial</code>에 도달 못했을 가능성 (연결 직후 실패).</li>
+    <li><strong>프로세스 재실행</strong>에서는 뜨는 게 정상. 기억이 휘발했기 때문. <code>--serial &lt;SN&gt;</code>으로 고정 지정 가능.</li>
+  </ul>
+
+  <h3 id="diag-pytest">9.6 테스트로 확인</h3>
+  <pre class="language-powershell"><code>.venv\Scripts\python.exe -m pytest tests/ -v</code></pre>
+  <p>전부 통과가 안 나오면 회귀. <code>tests/test_connector.py</code>의 개별 테스트로 범위 좁힘.</p>
+
+  <h2 id="limits">10. 알려진 한계 / 향후 개선 아이디어</h2>
+  <ul>
+    <li><strong><code>cb_search.mode=auto</code> 프로파일은 CB 변경 감지 미적용.</strong> 현재 Sound1 기본은 fixed라 해당 없음.</li>
+    <li><strong>CB 스냅샷 refresh가 teardown을 경유</strong>하므로 J-Link close/open이 매번 일어남 (수백 ms). 이상적으로는 <code>rtt_stop</code> + <code>rtt_start</code>만 재호출하는 inner-loop refresh가 더 가볍지만 reader/writer 라이프사이클 관리 복잡도가 늘어나 현재 채택하지 않음.</li>
+    <li><strong>다중 up channel 병합 수신 미지원</strong>. 필요해지면 <code>config.rtt.up_channels: [0,1]</code> 스펙 확장 + <code>RttReader</code>를 채널당 인스턴스화 + 라인 prefix 옵션 추가.</li>
+    <li><strong>Windows PowerShell 기본 코드페이지 cp949</strong> 때문에 한글 메시지가 깨질 수 있음. 현재는 <code>chcp 65001</code> 또는 VSCode terminal profile로 우회 중.</li>
+    <li><strong>J-Link Remote Server를 통한 다중 클라이언트 공유</strong> 미지원. 현재는 SEGGER DLL 단일 프로세스 전제.</li>
+  </ul>
+
+  <nav class="page-nav">
+    <a class="prev" href="usage.html"><span class="label">← 이전</span>사용법</a>
+    <a class="next" href="testing.html"><span class="label">다음 →</span>시험 절차</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/사용방법/디버깅 가이드.md</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme: t, securityLevel: 'loose',
+      themeVariables: { fontFamily: 'inherit' } });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>이력과 변경 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 이력과 변경</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>이력과 변경</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    auto-rtt-viewer 첫 개발의 단계 진척, 시계열 로그, 핵심 결정, 후속 영향, 그리고
+    초기 main 라인 이후 누적된 동작 영향 커밋과 문서 동기화 커밋 목록을 정리합니다.
+  </p>
+
+  <h2 id="progress">1. 단계 진척</h2>
+  <table>
+    <thead><tr><th>단계</th><th>산출물</th><th>상태</th><th>일시</th></tr></thead>
+    <tbody>
+      <tr><td>① 요구사항</td><td><a href="requirements.html">요구사항</a></td><td>완료</td><td>~2026-04</td></tr>
+      <tr><td>② 분석</td><td>구두 검토 — 첫 개발이라 별도 산출물 없음, 설계 근거는 <a href="rtt-reference.html">RTT 메커니즘</a>에 직접 담김</td><td>면제</td><td>—</td></tr>
+      <tr><td>③ 계획</td><td><a href="architecture.html">아키텍처(구현 계획)</a></td><td>완료</td><td>~2026-04</td></tr>
+      <tr><td>④ 구현</td><td><code>src/</code> (main·config·core·server) + <code>tests/</code> + 운영 정착</td><td>완료</td><td>~2026-04</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="timeline">2. 시계열 로그</h2>
+  <table>
+    <thead><tr><th>시각</th><th>이벤트</th></tr></thead>
+    <tbody>
+      <tr><td>~2026-04 ①</td><td>작업 시작 — Sound1 RTT 모니터링 수동 재연결 불편 해소 요구</td></tr>
+      <tr><td>~2026-04 ①</td><td>요구사항 작성 완료 (G1~G6 목표 · F1~F12 기능 · AC1~AC9 수용 기준)</td></tr>
+      <tr><td>~2026-04 ②</td><td>분석 단계 면제 — 첫 개발이라 별도 산출물 없이 구두 검토로 진행</td></tr>
+      <tr><td>~2026-04 ③</td><td>계획 작성 — Python 3.10·pylink-square·asyncio·YAML 스택 확정 + 11 단계 분해</td></tr>
+      <tr><td>~2026-04 ③</td><td>사용자 승인 게이트 통과 (Telnet 포트·라인 종결자·패키지명·프로파일 4건 승인)</td></tr>
+      <tr><td>~2026-04 ④</td><td>Step 1~11 순차 구현 — Skeleton/Config/Connector/Reader/Writer/FileSink/Telnet/Events/CLI/Test/Docs</td></tr>
+      <tr><td>~2026-04 ④</td><td>운영 정착 — Sound1 펌웨어 개발의 표준 RTT 모니터링 도구로 사용 시작</td></tr>
+      <tr><td>2026-05-07</td><td>docs 컨벤션 마이그레이션 — 이력 및 결과 문서를 1페이지 요약으로 신규 작성</td></tr>
+      <tr><td>2026-05-18</td><td>Package C Step 15 (메타 정합화) — frontmatter·TL;DR·자체 검토 보강</td></tr>
+      <tr><td>2026-05-18</td><td>Package C Step 16 (본문 양식 엄격 정합화) — §섹션 구조 재구조화, 상태 텍스트 통일</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="summary">3. 완료 요약</h2>
+  <ul>
+    <li><strong>기간</strong>: ~2026-04 (구체 시작일 미기록)</li>
+    <li><strong>모듈/태그</strong>: core / rtt, jlink, python, asyncio</li>
+    <li><strong>브랜치</strong>: 초기 개발 브랜치 (main 라인 형성)</li>
+    <li><strong>병합</strong>: 본 도구의 main 라인이 이미 동작 중 — 초기 개발 시점의 git 이력은 <code>claude_main</code> 분기 참조</li>
+    <li><strong>연계 작업</strong>: → Sound1 (펌웨어 개발 시 RTT 모니터링에 상시 사용)</li>
+  </ul>
+
+  <h2 id="what">4. 무엇을 했는가</h2>
+  <p>
+    J-Link RTT 출력을 자동 연결·자동 재연결로 읽어 표준 출력/파일/Telnet으로 퍼블리시하는
+    CLI 유틸리티(<code>auto-rtt-viewer</code>)를 Python 3.10 + pylink-square + asyncio + YAML 기반으로 구현.
+    SEGGER J-Link RTT Viewer GUI를 대체. 타겟 보드(Sound1 등) 전원 OFF→ON 시 사용자가 RTT를
+    수동 재연결할 필요 없이 자동 복구. 기본 출력은 stdout, 옵션으로 stdin 입력 + 파일 + Telnet 서버.
+  </p>
+
+  <h2 id="decisions">5. 핵심 결정</h2>
+  <ul>
+    <li><strong>언어/스택</strong>: Python 3.10 + pylink-square(SEGGER J-Link 공식 wrapper) + asyncio + PyYAML — 빠른 시작·라이브러리 성숙도·교차 플랫폼.</li>
+    <li><strong>모듈 분할</strong>: <code>main</code>(엔트리·CLI 파싱) / <code>config</code>(YAML 설정) / <code>core</code>(RTT 폴링·재연결 FSM) / <code>server</code>(Telnet 출력) — 책임 분리로 단위 테스트 용이.</li>
+    <li><strong>재연결 전략</strong>: 타겟 RAM의 SEGGER_RTT Control Block을 SWD 폴링하다가 read 실패 시 일정 backoff 후 재연결. 보드 전원 OFF 시점부터 ON 후 첫 메시지까지 사용자 개입 없이 복구.</li>
+  </ul>
+
+  <h2 id="impact">6. 후속 영향</h2>
+  <ul>
+    <li>Sound1 펌웨어 개발의 RTT 모니터링 표준 도구로 정착.</li>
+    <li>다른 MCU 타겟도 YAML 설정만 바꿔 재사용 가능 — 본 도구의 핵심 가치.</li>
+    <li>docs 컨벤션 마이그레이션 후 <code>사용방법/</code>에 사용법·디버깅 가이드·시험 절차가 모이고 <code>참고/J-Link/</code>에 도메인 지식이 보존됨.</li>
+    <li>wiki 프로젝트로 1차 가공을 거치며 본 HTML 사이트가 외부 공개 가능 형태로 재구성됨.</li>
+  </ul>
+
+  <h2 id="commits">7. 누적 동작·문서 커밋 (<code>claude_fix-disconnect-detection</code> 브랜치 13 커밋)</h2>
+  <p>초기 main 라인(<code>claude_init-project</code>) 이후 누적된 변경. <strong>굵게</strong> 표시한 커밋은 동작에 직접 영향을 주는 변경, 나머지는 문서 동기화. 병합 순서·범위는 사용자가 최종 결정.</p>
+  <table>
+    <thead><tr><th>커밋</th><th>주제</th><th>분류</th></tr></thead>
+    <tbody>
+      <tr><td><code>dee8a48</code></td><td>사용방법: VSCode 터미널 기반 실행 흐름으로 재구성</td><td>문서</td></tr>
+      <tr><td><code>ab1a084</code></td><td>사용방법: 초보자 관점에서 재작성</td><td>문서</td></tr>
+      <tr><td><code>2c1015a</code></td><td>사용방법: 기본 설정값 표 + Clock speed 경고 추가</td><td>문서</td></tr>
+      <tr><td><code>0b30882</code></td><td><strong>설정: Sound1 기본 clock speed 1000 → 4000 kHz</strong></td><td>동작</td></tr>
+      <tr><td><code>c4639cc</code></td><td>사용방법: 기본 speed 4000 kHz 반영</td><td>문서</td></tr>
+      <tr><td><code>5e1bbfa</code></td><td><strong>수정: 연결 끊김 감지 이중화 (target_connected + CB 주소 memory_read)</strong></td><td>동작</td></tr>
+      <tr><td><code>af1e822</code></td><td>문서: 끊김 감지 이중화 메커니즘 반영</td><td>문서</td></tr>
+      <tr><td><code>99157f3</code></td><td><strong>기능: J-Link SN 기반 자동 선택 + 최근 연결 SN 기억</strong></td><td>동작</td></tr>
+      <tr><td><code>abd9a1d</code></td><td>사용방법에 J-Link 자동 선택/SN 기억 섹션 + <code>--serial</code> 옵션 반영</td><td>문서</td></tr>
+      <tr><td><code>ef8d4d4</code></td><td><strong>수정: 연속 연결 실패 시 이벤트 스팸 억제 (30초 요약)</strong></td><td>동작</td></tr>
+      <tr><td><code>aa86b7c</code></td><td>문서: JFlash 등 타 도구 동시 사용 안내 + 실패 메시지 스팸 억제 동작 설명</td><td>문서</td></tr>
+      <tr><td><code>62ddbe8</code></td><td><strong>변경: SN·CB 버퍼 기억을 파일 → 프로세스 세션 메모리로 전환</strong> + CB 스냅샷 diff 로그 도입</td><td>동작</td></tr>
+      <tr><td><code>86d8864</code></td><td><strong>추가: supervise 폴링에서 CB 변경 자동 감지 → 재연결로 pylink 캐시 refresh</strong></td><td>동작</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="related">8. 관련 산출물 매핑</h2>
+  <table>
+    <thead><tr><th>본 사이트 페이지</th><th>원본 (Source Repo)</th></tr></thead>
+    <tbody>
+      <tr><td><a href="overview.html">개요</a> · <a href="requirements.html">요구사항</a></td><td><code>docs/tasks/core/20260421_initial-development/요구사항.md</code></td></tr>
+      <tr><td><a href="architecture.html">아키텍처</a></td><td><code>docs/tasks/core/20260421_initial-development/계획.md</code></td></tr>
+      <tr><td>본 페이지 (이력과 변경)</td><td><code>docs/tasks/core/20260421_initial-development/이력 및 결과.md</code></td></tr>
+      <tr><td><a href="install.html">설치</a> · <a href="usage.html">사용법</a></td><td><code>docs/사용방법/사용법.md</code></td></tr>
+      <tr><td><a href="debugging.html">디버깅 가이드</a> · <a href="troubleshooting.html">트러블슈팅</a></td><td><code>docs/사용방법/디버깅 가이드.md</code> + <code>docs/사용방법/사용법.md §8</code></td></tr>
+      <tr><td><a href="testing.html">시험 절차</a></td><td><code>docs/사용방법/시험 절차.md</code></td></tr>
+      <tr><td><a href="rtt-reference.html">J-Link RTT 메커니즘</a></td><td><code>docs/참고/J-Link/RTT 연결 메커니즘.md</code></td></tr>
+    </tbody>
+  </table>
+
+  <nav class="page-nav">
+    <a class="prev" href="troubleshooting.html"><span class="label">← 이전</span>트러블슈팅</a>
+    <a class="next" href="index.html"><span class="label">처음으로 ↑</span>홈</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/tasks/core/20260421_initial-development/이력 및 결과.md</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>

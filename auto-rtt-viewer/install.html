@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>설치 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 설치</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>설치</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    Python·SEGGER J-Link 설치 후 <code>.venv</code> 1회 설정만 하면, VSCode 터미널에서
+    <code>auto-rtt-viewer</code> 명령 한 줄로 동작합니다. 이 페이지는 최초 1회 설정만 다룹니다.
+  </p>
+
+  <div class="callout tip">
+    <div class="callout-title">Tip</div>
+    한 번 설정해두면 이후부터는 "VSCode로 폴더 열기 → 터미널에서 <code>auto-rtt-viewer</code> 치기" 두 단계로 끝입니다.
+    매번 하는 실행은 <a href="usage.html">사용법</a>에서 다룹니다.
+  </div>
+
+  <h2 id="prereq">1. 준비물</h2>
+  <table>
+    <thead><tr><th>항목</th><th>설명</th></tr></thead>
+    <tbody>
+      <tr><td>Windows 10 / 11</td><td>—</td></tr>
+      <tr><td>Python 3.10 이상</td><td>PowerShell에서 <code>python --version</code>으로 확인</td></tr>
+      <tr><td>VSCode + Python 확장</td><td>VSCode 설치 후 확장 탭에서 Microsoft의 "Python" 설치</td></tr>
+      <tr><td>SEGGER J-Link Software Pack</td><td><a href="https://www.segger.com/downloads/jlink/" target="_blank" rel="noopener">SEGGER 공식 사이트</a>에서 설치. <code>JLinkARM.dll</code>이 자동으로 PATH에 등록됨</td></tr>
+      <tr><td>J-Link 프로브</td><td>USB로 PC에 연결</td></tr>
+      <tr><td>타겟 보드</td><td>SWD/JTAG 결선 + 펌웨어에 RTT 초기화 포함</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    Sound1(E8300)은 부트로더에서 <code>SEGGER_RTT</code>를 초기화하므로 펌웨어 쪽 준비는 따로 필요 없습니다.
+  </div>
+
+  <h2 id="setup">2. 최초 1회 설정</h2>
+  <div class="callout tip">
+    <div class="callout-title">Tip</div>
+    프로젝트 폴더에 이미 <code>.venv</code>가 있다면 2.3을 건너뛰고 2.1 → 2.2 → 2.4만 하면 됩니다.
+  </div>
+
+  <h3 id="step-2-1">2.1 VSCode로 프로젝트 폴더 열기</h3>
+  <ul>
+    <li>VSCode 실행 → <strong>File → Open Folder</strong> → 프로젝트 폴더 선택 (소스를 받은 위치).</li>
+    <li>"Do you trust the authors..." 창이 뜨면 <strong>Yes, I trust the authors</strong> 클릭.</li>
+    <li>터미널 열기: 메뉴 <strong>Terminal → New Terminal</strong> 또는 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd>.</li>
+  </ul>
+
+  <div class="callout important">
+    <div class="callout-title">Important</div>
+    이렇게 열면 터미널의 현재 경로가 자동으로 프로젝트 폴더가 됩니다. 이 "경로가 프로젝트 폴더"라는 조건이 이후 모든 단계의 전제입니다.
+    VSCode 없이 PowerShell을 직접 열었다면 먼저 <code>cd</code>로 프로젝트 폴더로 이동하세요.
+  </div>
+
+  <h3 id="step-2-2">2.2 PowerShell 실행 정책 허용</h3>
+  <p>PowerShell은 기본적으로 스크립트 실행을 막아둡니다. 나중에 <code>Activate.ps1</code>을 쓸 때 이런 에러가 나면:</p>
+  <pre class="language-text"><code>이 시스템에서 스크립트를 실행할 수 없으므로 ... Activate.ps1 파일을 로드할 수 없습니다.</code></pre>
+  <p>터미널에서 <strong>한 번만</strong> 다음을 실행합니다 (이 PC, 이 계정 전체에 영구 적용됨):</p>
+  <pre class="language-powershell"><code>Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned</code></pre>
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    <code>RemoteSigned</code>는 내 PC에서 만든 스크립트는 그대로 실행하고, 인터넷에서 다운로드한 스크립트만 디지털 서명을 요구하는 정책입니다. 관리자 권한이 필요 없습니다.
+  </div>
+
+  <h3 id="step-2-3">2.3 가상환경 만들고 패키지 설치</h3>
+  <p>(프로젝트 폴더에 <code>.venv</code>가 이미 있다면 건너뛰세요.)</p>
+  <p>터미널에서 순서대로:</p>
+  <pre class="language-powershell"><code>python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"</code></pre>
+
+  <div class="callout warning">
+    <div class="callout-title">Warning</div>
+    마지막 줄에서 따옴표 안의 점 위치 주의: <code>".[dev]"</code> (점이 <code>[</code> 앞). <code>"[.dev]"</code>가 아닙니다.
+    <ul>
+      <li><code>.</code> = "현재 폴더의 프로젝트"</li>
+      <li><code>[dev]</code> = "개발용 추가 패키지(pytest 등)도 같이"</li>
+    </ul>
+  </div>
+
+  <p>설치가 끝나면 <strong>터미널에서 <code>auto-rtt-viewer</code>라고 쳤을 때 이 CLI가 실행</strong>됩니다.
+    (<code>python -m auto_rtt_viewer</code>도 같은 동작을 하지만, 짧은 쪽 하나만 기억하면 충분합니다.)</p>
+
+  <h3 id="step-2-4">2.4 VSCode가 venv를 자동으로 쓰게 지정</h3>
+  <p>이 설정을 한 번 해두면 <strong>앞으로 VSCode 터미널을 열 때마다 <code>.venv</code>가 자동 활성화</strong>됩니다. 매번 <code>Activate.ps1</code>을 칠 필요가 없어집니다.</p>
+  <ol>
+    <li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → 검색창에 <strong>Python: Select Interpreter</strong> 입력 후 선택.</li>
+    <li>목록에서 <code>Python 3.xx.x ('.venv': venv)</code> 선택 (경로가 <code>.\.venv\Scripts\python.exe</code>인 항목).</li>
+    <li>터미널을 닫고(휴지통 아이콘) 새 터미널을 엽니다(<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd>).</li>
+    <li>프롬프트 앞에 <code>(.venv)</code>가 표시되면 성공.</li>
+  </ol>
+  <p>예시:</p>
+  <pre class="language-text"><code>(.venv) PS E:\path\to\auto-rtt-viewer&gt;</code></pre>
+
+  <h2 id="verify">3. 설치 확인</h2>
+  <p>다음 두 명령으로 설치가 정상인지 확인합니다.</p>
+  <pre class="language-powershell"><code>auto-rtt-viewer --version
+auto-rtt-viewer --help</code></pre>
+  <ul>
+    <li><code>--version</code>이 버전 문자열을 출력 → CLI 엔트리포인트 정상.</li>
+    <li><code>--help</code>가 모든 옵션 (<code>--profile/--device/--interface/--speed/--serial/--logfile/--no-stdout/--telnet-port/--no-telnet/--no-stdin/--timestamp</code>)을 표시 → argparse 정상.</li>
+  </ul>
+
+  <h2 id="encoding">4. 한글 인코딩 사전 처리 (권장)</h2>
+  <p>PowerShell의 기본 문자 인코딩이 cp949라서 CLI의 한글 상태 메시지가 깨질 수 있습니다. 새 터미널마다 다음 한 줄로 UTF-8 전환 가능합니다:</p>
+  <pre class="language-powershell"><code>chcp 65001</code></pre>
+
+  <p>매번 치기 귀찮다면 VSCode의 <code>settings.json</code> (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> → "Preferences: Open User Settings (JSON)")에 다음을 추가하면 모든 새 PowerShell 터미널이 자동으로 UTF-8로 열립니다:</p>
+  <pre class="language-text"><code>"terminal.integrated.profiles.windows": {
+  "PowerShell (UTF-8)": {
+    "source": "PowerShell",
+    "args": ["-NoExit", "-Command", "chcp 65001 | Out-Null"]
+  }
+},
+"terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)"</code></pre>
+
+  <h2 id="next">다음 단계</h2>
+  <ul>
+    <li>실행 흐름과 기본 동작 → <a href="usage.html">사용법</a></li>
+    <li>실행 중 로그 해석·내부 동작 → <a href="debugging.html">디버깅 가이드</a></li>
+    <li>설치 단계에서 막혔다면 → <a href="troubleshooting.html">트러블슈팅</a></li>
+  </ul>
+
+  <nav class="page-nav">
+    <a class="prev" href="rtt-reference.html"><span class="label">← 이전</span>J-Link RTT 메커니즘</a>
+    <a class="next" href="usage.html"><span class="label">다음 →</span>사용법</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/사용방법/사용법.md §1~§2</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>

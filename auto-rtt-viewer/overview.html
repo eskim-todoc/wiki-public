@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>개요 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 개요</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>개요</h1>
+  <p class="lead" style="color:var(--subtext0); font-size:1.05rem;">
+    auto-rtt-viewer가 무엇을 해결하고, 어떤 시나리오에서 작동하며, 기존 도구와 어떻게 다른지 정리합니다.
+  </p>
+
+  <h2 id="problem">무엇을 해결하는 도구인가</h2>
+  <p>
+    SEGGER 공식 <strong>J-Link RTT Viewer GUI</strong>는 타겟 보드 전원이 OFF되면 연결이 끊어지고,
+    매번 사용자가 <em>재연결 버튼을 손으로</em> 눌러야 합니다. Sound1(E8300) 펌웨어 개발 중에는
+    보드 전원 on/off가 잦아 이 반복 작업이 개발 흐름을 끊고 비효율적이었습니다.
+  </p>
+  <p>
+    RTT 텍스트 출력은 TeraTerm이나 VSCode 터미널에서 보는 게 익숙하므로, 별도 GUI 없이
+    텍스트 스트림으로 소비할 수 있어야 했습니다. <strong>auto-rtt-viewer</strong>는 이 두 요구를
+    하나의 Python CLI로 묶어 해결합니다.
+  </p>
+
+  <h2 id="scenario">사용 시나리오</h2>
+  <p>아래는 도구가 가정하는 표준 사용 흐름입니다.</p>
+  <pre class="mermaid">
+sequenceDiagram
+    actor User as 사용자
+    participant Tool as auto-rtt-viewer
+    participant JLink as J-Link
+    participant Board as 타겟 보드
+    participant Term as TeraTerm / VSCode 터미널
+
+    User->>Tool: 실행 (프로파일 지정)
+    Tool->>JLink: 연결 시도
+    alt 보드 전원 ON
+        JLink->>Board: SWD/JTAG 연결
+        JLink-->>Tool: RTT 스트림 (upchannel)
+        Tool-->>Term: 실시간 출력
+    else 보드 전원 OFF
+        Tool->>Tool: 짧은 주기로 감지·재시도 (폴링)
+    end
+    Note over Board: 사용자가 보드 전원 OFF
+    JLink-->>Tool: 끊김 이벤트 / 폴링 실패
+    Tool->>Tool: 즉시 재연결 루프 진입
+    Note over Board: 사용자가 보드 전원 ON
+    Tool->>JLink: 재연결 (최대한 빠르게)
+    JLink-->>Tool: RTT 스트림 재개 (초기 부팅 메시지 포함)
+    Tool-->>Term: 출력 재개
+    User->>Term: ASCII 키 입력
+    Term->>Tool: stdin / telnet
+    Tool->>JLink: RTT downchannel 쓰기
+    JLink->>Board: 입력 전달
+    User->>Tool: Ctrl+C
+    Tool->>JLink: 연결 해제
+    Tool-->>User: 종료 (자원 정리 완료)
+  </pre>
+
+  <h2 id="who">누가 쓰는가</h2>
+  <p>도구는 다음 작업을 자주 반복하는 임베디드 개발자를 1차 사용자로 가정합니다.</p>
+  <ul>
+    <li>Sound1(E8300) 또는 다른 Cortex-M MCU 펌웨어 작성·디버깅</li>
+    <li>보드 전원을 자주 껐다 켜야 하는 검증 작업 (캘리브레이션, 부팅 시퀀스 확인)</li>
+    <li>JFlash 또는 Ozone으로 빈번하게 펌웨어를 재다운로드하는 환경</li>
+    <li>로그를 파일로 영구 보존하면서 동시에 라이브 모니터링이 필요한 경우</li>
+    <li>VSCode 터미널·TeraTerm에서 양방향 RTT 통신으로 펌웨어 콘솔에 명령을 보내고 응답을 받는 워크플로우</li>
+  </ul>
+
+  <h2 id="vs-gui">기존 SEGGER GUI와 차별점</h2>
+  <table>
+    <thead><tr><th>항목</th><th>SEGGER RTT Viewer GUI</th><th>auto-rtt-viewer</th></tr></thead>
+    <tbody>
+      <tr><td>전원 OFF→ON 자동 재연결</td><td>수동 (재연결 버튼)</td><td>자동 (100 ms 간격 무한 재시도)</td></tr>
+      <tr><td>JFlash 등 타 도구 동시 사용</td><td>점유 충돌 → 수동 정리</td><td>자동 재시도 루프로 충돌 해제 즉시 재연결</td></tr>
+      <tr><td>출력 동시 다중 채널</td><td>GUI 창 하나</td><td>stdout + 파일(append) + Telnet 동시</td></tr>
+      <tr><td>로그 영구 보존</td><td>별도 캡처 필요</td><td><code>--logfile</code> 한 줄</td></tr>
+      <tr><td>스크립트·CI 통합</td><td>어려움 (GUI)</td><td>CLI라 셸 스크립트와 자연스럽게 결합</td></tr>
+      <tr><td>SN 자동 기억 (다중 프로브 환경)</td><td>매번 선택</td><td>세션 기억 (디스크 저장 없음)</td></tr>
+      <tr><td>CB 변경 자동 감지 (부트로더→앱)</td><td>없음 (수동 stop/start)</td><td>100 ms 주기 감시 + 자동 refresh</td></tr>
+      <tr><td>설치 자유도</td><td>SEGGER 설치 필요</td><td>JLinkARM.dll만 있으면 venv + pip 한 줄</td></tr>
+      <tr><td>UI</td><td>GUI 윈도우</td><td>VSCode 터미널·TeraTerm 친화 텍스트 스트림</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="scope">적용 대상</h2>
+  <p>도구는 다음 타겟·환경을 검증된 1차 적용 범위로 가정합니다.</p>
+  <ul>
+    <li><strong>Sound1 (ON Semi Ezairo 8300, Cortex-M3)</strong> — 기본 프로파일 내장
+      (<code>Cortex-M3</code> generic, SWD, 4000 kHz, CB <code>0x20000000</code> fixed)</li>
+    <li><strong>다른 Cortex-M 계열 MCU</strong> — YAML 프로파일 한 장을 추가하면 동일 도구 재사용 가능</li>
+    <li><strong>Windows 10 / 11 + PowerShell + Python 3.10 이상</strong></li>
+    <li><strong>SEGGER J-Link Software Pack</strong> 설치 (JLinkARM.dll 사용)</li>
+    <li><strong>SWD 또는 JTAG로 결선된 타겟 보드</strong> + 펌웨어에 RTT 초기화 포함</li>
+  </ul>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    Linux/macOS 지원은 현재 비목표입니다. pylink-square 자체는 다중 플랫폼이지만 본 도구의
+    사용 절차·터미널 인코딩·실행 정책 가이드는 Windows + PowerShell + VSCode 환경 기준입니다.
+  </div>
+
+  <h2 id="value">왜 이 도구가 필요한가 (요약)</h2>
+  <div class="card-grid">
+    <div class="card"><div class="card-title">반복 절감</div><div class="card-body">
+      "전원 사이클 → 재연결 버튼 클릭" 루틴 자체를 제거. 도구는 켜둔 채로 보드만 만지면 됩니다.
+    </div></div>
+    <div class="card"><div class="card-title">로그 누락 0</div><div class="card-body">
+      재연결 지연이 100 ms 단위라 부트로더 초기 메시지부터 캡처. 파일 출력은 재연결 경계에서도 무손실.
+    </div></div>
+    <div class="card"><div class="card-title">개발 흐름 보존</div><div class="card-body">
+      JFlash 다운로드 → 점유 해제 → 자동 재연결까지 사람이 개입하지 않음. 새 펌웨어 부팅 로그까지 자연 연속.
+    </div></div>
+    <div class="card"><div class="card-title">재사용 가능</div><div class="card-body">
+      YAML 한 장만 추가하면 다른 타겟 MCU에도 동일 도구. 도구 자체를 다시 만들 필요 없음.
+    </div></div>
+  </div>
+
+  <nav class="page-nav">
+    <a class="prev" href="index.html"><span class="label">← 이전</span>홈</a>
+    <a class="next" href="requirements.html"><span class="label">다음 →</span>요구사항</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/tasks/core/20260421_initial-development/요구사항.md</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({ startOnLoad: false, theme: t, securityLevel: 'loose',
+      themeVariables: { fontFamily: 'inherit' } });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

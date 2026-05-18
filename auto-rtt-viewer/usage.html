@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>사용법 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 사용법</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>사용법</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    매번 하는 실행, 기본 설정값, J-Link 다중 프로브 환경, 자주 쓰는 옵션, TeraTerm으로 키 입력 보내기,
+    전원 OFF→ON 시 동작, 커스텀 프로파일 만들기, 연속 실패 시 출력 규칙까지.
+  </p>
+
+  <div class="callout tip">
+    <div class="callout-title">Tip</div>
+    이 도구는 <strong>J-Link 프로브에서 RTT 로그를 뽑아 터미널에 실시간으로 보여주는 CLI 프로그램</strong>입니다.
+    백그라운드 서비스가 아니라, 필요할 때 직접 실행했다가 <kbd>Ctrl</kbd>+<kbd>C</kbd>로 종료하는 방식입니다.
+  </div>
+
+  <h2 id="run">1. 매번 실행</h2>
+  <p>VSCode에서 프로젝트 폴더를 열고 터미널을 켰다면, 이 한 줄이 전부입니다.</p>
+  <pre class="language-powershell"><code>auto-rtt-viewer</code></pre>
+  <p>실행되면 자동으로:</p>
+  <ol>
+    <li>내장 프로파일 <code>profiles/sound1.yaml</code> 로드.</li>
+    <li>J-Link 연결 시도 (0.1초 간격으로 계속 재시도).</li>
+    <li>연결되면 <code>0x20000000</code>의 RTT Control Block을 잡고, <strong>up 채널 0의 로그를 터미널에 실시간 출력</strong>.</li>
+    <li><code>127.0.0.1:19021</code>에 Telnet 서버 기동 (TeraTerm으로 접속해서 타겟에 키 입력 가능, §5 참고).</li>
+  </ol>
+  <p>종료는 <strong><kbd>Ctrl</kbd>+<kbd>C</kbd> 한 번</strong>.</p>
+
+  <h2 id="defaults">2. 기본 설정값 (내장 Sound1 프로파일)</h2>
+  <p>옵션 없이 실행했을 때 사용되는 값:</p>
+  <table>
+    <thead><tr><th>분류</th><th>항목</th><th>기본값</th></tr></thead>
+    <tbody>
+      <tr><td>타겟</td><td>Device</td><td><code>Cortex-M3</code> (E8300용 generic)</td></tr>
+      <tr><td>타겟</td><td>Interface</td><td><code>SWD</code></td></tr>
+      <tr><td>타겟</td><td><strong>Clock speed</strong></td><td><strong><code>4000</code> kHz (= 4 MHz)</strong></td></tr>
+      <tr><td>RTT</td><td>Control Block 주소</td><td><code>0x20000000</code> (fixed)</td></tr>
+      <tr><td>RTT</td><td>Up / Down 채널</td><td><code>0</code> / <code>0</code></td></tr>
+      <tr><td>재접속</td><td>재시도·폴링 간격</td><td><code>100</code> ms (무한 재시도)</td></tr>
+      <tr><td>출력</td><td>stdout</td><td>켜짐</td></tr>
+      <tr><td>출력</td><td>로그 파일</td><td>끔 (<code>--logfile</code>로 켜기)</td></tr>
+      <tr><td>출력</td><td>라인별 타임스탬프</td><td>끔 (<code>--timestamp</code>로 켜기)</td></tr>
+      <tr><td>Telnet</td><td>서버</td><td>켜짐, <code>127.0.0.1:19021</code></td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    <strong>기본 Clock speed는 4000 kHz(4 MHz)</strong>입니다 — 기존 SEGGER RTT Viewer GUI 환경과 동일합니다.
+    보드 결선이 불안하거나 저속 디버깅이 필요하면 <code>--speed 1000</code>처럼 내려서 시도하세요.
+    <pre class="language-powershell" style="margin-top:8px;"><code>auto-rtt-viewer --speed 1000</code></pre>
+    고정적으로 다른 속도를 쓰고 싶다면 <code>profiles/sound1.yaml</code>의 <code>target.speed_khz</code> 값을 직접 고치거나 커스텀 프로파일을 만드세요(§7).
+  </div>
+
+  <h2 id="multiple-probes">3. J-Link가 여러 개 연결되어 있을 때</h2>
+  <p>PC에 J-Link 프로브가 <strong>두 개 이상</strong> 꽂혀 있으면 처음 실행 시 SEGGER의 프로브 선택 창이 뜹니다.
+    한 번 선택하면 <strong>그 프로브의 Serial Number가 이번 실행 세션 동안 기억</strong>되므로,
+    이후 재연결(전원 OFF/ON, JFlash 다운로드 등)에서는 선택 창 없이 같은 프로브로 바로 이어 붙습니다.</p>
+
+  <div class="callout important">
+    <div class="callout-title">Important</div>
+    <strong>기억은 프로세스 메모리에만</strong> 보관됩니다. <kbd>Ctrl</kbd>+<kbd>C</kbd>로 <code>auto-rtt-viewer</code>를 종료하면 SN 기억도 함께 사라지고, 다시 실행하면 처음부터입니다(프로브 2개 이상이면 선택 창이 다시 뜸). 디스크에 저장되는 파일은 없습니다.
+  </div>
+
+  <p>프로브가 <strong>하나만</strong> 꽂혀 있을 때는 선택 창이 뜨지 않고 바로 연결됩니다. 이때도 SN은 세션에 기억되므로, 실행 중에 두 번째 프로브를 추가로 꽂아도 재연결 시 기존 프로브가 계속 선택됩니다.</p>
+
+  <h3 id="connect-log">연결 시 출력되는 로그</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 14:32:01.100 INFO  J-Link SN=123456789 기억 (이번 세션의 이후 재연결에 자동 적용)
+[AUTO-RTT] 14:32:01.245 INFO  RTT 연결 완료 (device=Cortex-M3, tif=SWD, speed=4000kHz, ...)
+[AUTO-RTT] 14:32:01.312 INFO  RTT 버퍼: up[0]=0x20001000(1024B), down[0]=0x200014C4(16B)</code></pre>
+
+  <h3 id="reconnect-log">재연결(전원 사이클 등) 시</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 14:35:10.512 INFO  J-Link 선택: SN=123456789 (세션 기억)
+[AUTO-RTT] 14:35:10.632 INFO  RTT 연결 완료 (...)
+[AUTO-RTT] 14:35:10.681 INFO  RTT 버퍼 유지: up[0]=0x20001000(1024B), down[0]=0x200014C4(16B)</code></pre>
+
+  <h3 id="cb-change-log">버퍼 주소가 바뀌었을 때 (예: 부트로더→앱 전환 직후 재연결)</h3>
+  <pre class="language-text"><code>[AUTO-RTT] 14:36:02.902 INFO  RTT 버퍼 변경: up[0]=0x20005000(2048B), up[1]=0x20006000(512B), down[0]=0x200014C4(16B) (변경점: up[0] 0x20001000(1024B)→0x20005000(2048B); up[1] -→0x20006000(512B))</code></pre>
+
+  <div class="callout tip">
+    <div class="callout-title">Tip</div>
+    "RTT 버퍼" 정보(CB의 <code>aUp[]</code>/<code>aDown[]</code>에 등록된 각 채널 버퍼 주소·크기)는
+    SN과 같은 정책으로 <strong>세션 메모리에만</strong> 보관되며, 재연결 때 이전 스냅샷과 비교해 <strong>유지/변경</strong>을 표시합니다.
+    부트로더·앱이 같은 CB에서 서로 다른 채널·버퍼를 쓰는 구성에서 상태가 한눈에 보입니다.<br><br>
+    더불어 <strong>연결이 유지된 상태에서도 0.1초마다 CB를 감시</strong>합니다. 부트로더→앱 전환처럼
+    타겟이 live 상태에서 CB를 재구성하면(예: 앱이 <code>SEGGER_RTT_ConfigUpBuffer(1, ...)</code>로 새 채널 등록)
+    호스트 측 pylink 내부 캐시가 stale이 되어 새 버퍼의 데이터를 못 읽습니다. 이를 막기 위해 자동으로 감지 →
+    <code>WARN  RTT CB 변경 감지 — pylink 캐시 refresh 위해 재연결 (변경점: ...)</code> 발행 후
+    재연결 사이클이 돌며 <code>rtt_start</code>를 다시 호출해 캐시를 갱신합니다. 별도 설정·CLI 옵션 불필요.
+  </div>
+
+  <h3 id="serial-switch">다른 프로브로 강제 전환하기</h3>
+  <ul>
+    <li>일회성으로 다른 SN을 쓰려면 <code>--serial</code> 옵션:
+      <pre class="language-powershell"><code>auto-rtt-viewer --serial 987654321</code></pre>
+      이 SN으로 연결에 성공하면 세션 기억도 이 값으로 교체됩니다.
+    </li>
+    <li>세션 기억을 비우고 선택 창을 다시 띄우고 싶다면 <strong><kbd>Ctrl</kbd>+<kbd>C</kbd>로 종료 후 재실행</strong>하면 됩니다. 별도 파일 삭제 같은 정리 작업은 필요 없습니다.</li>
+    <li>세션에 기억된 SN의 프로브가 더 이상 연결되어 있지 않으면 자동으로 <code>WARN  지정 SN=... 열기 실패 → 기본 선택으로 fallback</code> 메시지가 출력된 뒤 SEGGER 기본 동작(단독이면 자동, 여러 개면 선택 창)으로 넘어갑니다.</li>
+  </ul>
+
+  <h2 id="jflash">4. JFlash · RTT Viewer GUI 등 다른 J-Link 도구와 함께 사용</h2>
+  <p>SEGGER J-Link DLL은 <strong>한 번에 한 프로세스만</strong> J-Link 프로브를 열 수 있습니다.
+    JFlash / Ozone / SEGGER RTT Viewer GUI / J-Flash Lite 등이 모두 이 DLL을 직접 열기 때문에 <strong>동시 사용은 불가</strong>합니다.</p>
+
+  <p>다행히 <code>auto-rtt-viewer</code>는 <strong>자동 재시도 루프</strong>이므로 다음 흐름이 저절로 성립합니다:</p>
+  <ol>
+    <li><code>auto-rtt-viewer</code>가 켜진 상태에서 이클립스 IDE에서 <strong>JFlash로 FW 다운로드 시작</strong> → <code>WARN  연결 실패: Could not open J-Link ... already in use</code> 한 줄 출력 후 조용히 재시도 대기.</li>
+    <li>JFlash 다운로드 <strong>완료</strong> → J-Link DLL 점유 해제.</li>
+    <li>다음 재시도(최대 0.1초 이내)에서 <code>auto-rtt-viewer</code>가 자동으로 재연결 → <code>INFO  RTT 연결 완료 ...</code> 출력. 새로 올라간 펌웨어의 부팅 메시지까지 놓치지 않고 캡처.</li>
+  </ol>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    <strong>따라서 FW 다운로드 전에 <code>auto-rtt-viewer</code>를 종료할 필요가 없습니다.</strong> 켜둔 채 JFlash를 쓰면 다운로드 직후의 부팅 로그까지 자동으로 이어서 기록됩니다.
+    단, JFlash 다운로드 중에는 RTT 연결이 일시적으로 끊긴 상태이므로 그 동안의 타겟 로그는 수집되지 않습니다(타겟이 flash 쓰기로 halt되어 있으므로 어차피 로그 없음).
+  </div>
+
+  <h2 id="dedup">5. 같은 에러가 계속 날 때의 표시 규칙 (스팸 억제)</h2>
+  <p>재시도 중에 <strong>연속으로 같은 사유로 실패</strong>하면 로그가 도배되지 않도록 다음 규칙이 적용됩니다:</p>
+  <ul>
+    <li><strong>첫 실패</strong>: 원본 메시지로 <code>WARN  연결 실패: ...</code> 한 줄.</li>
+    <li><strong>같은 사유 반복</strong>: 조용히 재시도만 (추가 출력 없음).</li>
+    <li><strong>30초마다 한 번</strong>: <code>WARN  연결 실패 지속 (N회 동안 같은 사유) — 최근: ...</code> 요약.</li>
+    <li><strong>사유가 바뀌거나 연결이 성공</strong>: 상태 초기화 → 새 이벤트는 즉시 출력.</li>
+  </ul>
+
+  <p>예시:</p>
+  <pre class="language-text"><code>[AUTO-RTT] 11:29:56.548 WARN  연결 실패: JLinkException: Target system has no power.
+   (같은 사유로 계속 재시도 중 — 메시지 억제)
+[AUTO-RTT] 11:30:26.562 WARN  연결 실패 지속 (301회 동안 같은 사유) — 최근: JLinkException: Target system has no power.
+[AUTO-RTT] 11:30:34.130 INFO  RTT 연결 완료 (device=Cortex-M3, tif=SWD, speed=4000kHz, ...)</code></pre>
+
+  <h2 id="options">6. 자주 쓰는 옵션</h2>
+  <p>옵션을 주면 프로파일의 해당 값을 덮어씁니다. 아래 "기본값"은 <strong>내장 Sound1 프로파일 기준</strong>입니다.</p>
+  <table>
+    <thead><tr><th>옵션</th><th>기본값</th><th>설명</th></tr></thead>
+    <tbody>
+      <tr><td><code>--timestamp</code></td><td>off</td><td>로그 라인 앞에 <code>[HH:MM:SS.mmm] </code> 시각 표시.</td></tr>
+      <tr><td><code>--logfile PATH</code></td><td>없음</td><td>로그를 파일에도 기록 (append). 경로의 폴더는 자동 생성.</td></tr>
+      <tr><td><code>--no-stdin</code></td><td>(stdin 켜짐)</td><td>VSCode 터미널에 친 키를 타겟 입력으로 전달하는 동작을 끔. 기본은 켜짐.</td></tr>
+      <tr><td><code>--no-telnet</code></td><td>(Telnet 켜짐)</td><td>Telnet 서버 끄기.</td></tr>
+      <tr><td><code>--no-stdout</code></td><td>(stdout 켜짐)</td><td>터미널 출력 끄기 (로그 파일 전용 모드로 돌릴 때).</td></tr>
+      <tr><td><code>--telnet-port N</code></td><td><code>19021</code></td><td>Telnet 포트 변경.</td></tr>
+      <tr><td><code>--profile PATH</code></td><td>내장 <code>sound1.yaml</code></td><td>다른 YAML 프로파일 사용 (§8).</td></tr>
+      <tr><td><code>--device NAME</code></td><td><code>Cortex-M3</code></td><td>SEGGER 칩 이름 강제 지정.</td></tr>
+      <tr><td><code>--interface SWD|JTAG</code></td><td><code>SWD</code></td><td>인터페이스 강제 지정.</td></tr>
+      <tr><td><code>--speed KHZ</code></td><td><strong><code>4000</code></strong></td><td>클럭 속도(kHz) 강제 지정.</td></tr>
+      <tr><td><code>--serial SN</code></td><td>(세션 기억)</td><td>J-Link Serial Number 강제 지정. 지정 안 하면 이번 세션에서 처음 연결한 SN을 재연결에 자동 재사용 (§3 참고).</td></tr>
+    </tbody>
+  </table>
+
+  <h3 id="examples">자주 쓰는 조합</h3>
+  <pre class="language-powershell"><code># 시각 + 로그 파일 동시 기록
+auto-rtt-viewer --timestamp --logfile logs\sound1_2026-04-22.log
+
+# 연결이 불안정하면 속도를 낮춰 시도
+auto-rtt-viewer --speed 1000
+
+# 터미널 입력은 기본 켜짐 — Telnet만 끄기 (stdin 그대로 타겟에 전달)
+auto-rtt-viewer --no-telnet
+
+# stdin 입력을 끄고 로그 수신만 하고 싶을 때
+auto-rtt-viewer --no-stdin
+
+# Sound1이 아닌 다른 타겟 임시 사용
+auto-rtt-viewer --device nRF52840_xxAA --interface SWD --speed 4000</code></pre>
+
+  <h2 id="teraterm">7. TeraTerm으로 접속해서 타겟에 키 입력 보내기</h2>
+  <p><code>auto-rtt-viewer</code>가 실행 중이면 <code>127.0.0.1:19021</code>에 Telnet 서버가 떠 있습니다.</p>
+  <ol>
+    <li>TeraTerm 실행 → <strong>파일 → 새 연결 → TCP/IP</strong>.</li>
+    <li>설정:
+      <ul>
+        <li>Host: <code>127.0.0.1</code></li>
+        <li>Service: <strong>Telnet</strong></li>
+        <li>TCP port: <code>19021</code></li>
+      </ul>
+    </li>
+    <li>접속 후 TeraTerm 창에서 키를 누르면 RTT downchannel로 타겟에 전달됩니다.</li>
+  </ol>
+
+  <h2 id="power-cycle">8. 보드 전원 OFF → ON 시 동작</h2>
+  <ol>
+    <li>전원이 꺼지면 0.1초 안에 감지. 출력 순서는 대략:
+      <ul>
+        <li><code>[AUTO-RTT] ... WARN  타겟 응답 없음 (...) — 연결 끊김 판정</code></li>
+        <li><code>[AUTO-RTT] ... WARN  연결 끊김. 재연결 시도 중.</code></li>
+      </ul>
+    </li>
+    <li>0.1초 간격으로 재연결 시도.</li>
+    <li>전원이 다시 들어오면 첫 성공 순간 RTT를 재개 → <code>INFO  RTT 연결 완료 (...)</code> 출력.</li>
+    <li>부트로더가 찍는 초기 메시지가 up 버퍼에 남아 있는 한 <strong>한 줄도 놓치지 않고 캡처</strong>합니다.</li>
+  </ol>
+
+  <div class="callout note">
+    <div class="callout-title">Note</div>
+    감지는 두 가지 방식을 동시에 사용합니다.
+    <ul>
+      <li><strong>빠른 감지</strong>: 0.1초마다 타겟 CB 주소(기본 <code>0x20000000</code>)를 실제로 읽어봄 → 전원 OFF 시 SWD 응답이 없어 즉시 예외 발생.</li>
+      <li><strong>보조 감지</strong>: J-Link의 <code>target_connected()</code> 폴링 (DLL 내부 캐시 때문에 전원 OFF 감지가 늦을 수 있어 위 방식을 보강).</li>
+    </ul>
+    <code>profiles/*.yaml</code>에서 <code>cb_search.mode: auto</code>를 쓰면 첫 번째(빠른) 감지는 비활성화되고 <code>target_connected()</code>에만 의존하므로, 전원 OFF 감지가 느려질 수 있습니다.
+  </div>
+
+  <h2 id="custom-profile">9. 커스텀 프로파일 만들기</h2>
+  <p>다른 타겟용 설정을 만들려면 <code>src/auto_rtt_viewer/profiles/sound1.yaml</code>을 복사해 편집한 뒤:</p>
+  <pre class="language-powershell"><code>auto-rtt-viewer --profile path\to\my_profile.yaml</code></pre>
+  <p>프로파일 필드 전체 레퍼런스는 <a href="architecture.html#config">아키텍처 §7 설정 파일 스펙</a>을 참조하세요.</p>
+
+  <h2 id="encoding">10. 한글이 깨져 보일 때</h2>
+  <p>PowerShell의 기본 문자 인코딩이 cp949라서 CLI의 한글 메시지가 깨집니다. 터미널에서 한 번:</p>
+  <pre class="language-powershell"><code>chcp 65001</code></pre>
+  <p>VSCode <code>settings.json</code>에 다음을 추가하면 모든 새 PowerShell 터미널이 자동으로 UTF-8로 열립니다:</p>
+  <pre class="language-text"><code>"terminal.integrated.profiles.windows": {
+  "PowerShell (UTF-8)": {
+    "source": "PowerShell",
+    "args": ["-NoExit", "-Command", "chcp 65001 | Out-Null"]
+  }
+},
+"terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)"</code></pre>
+
+  <nav class="page-nav">
+    <a class="prev" href="install.html"><span class="label">← 이전</span>설치</a>
+    <a class="next" href="debugging.html"><span class="label">다음 →</span>디버깅 가이드</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/사용방법/사용법.md</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>

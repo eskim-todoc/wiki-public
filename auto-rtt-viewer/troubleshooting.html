@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>트러블슈팅 — auto-rtt-viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>auto-rtt-viewer</div>
+  <div class="brand-sub">J-Link RTT Auto Connect CLI</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Home</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">기획</div><ul>
+      <li><a href="overview.html">개요</a></li>
+      <li><a href="requirements.html">요구사항</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">설계</div><ul>
+      <li><a href="architecture.html">아키텍처</a></li>
+      <li><a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">운영</div><ul>
+      <li><a href="install.html">설치</a></li>
+      <li><a href="usage.html">사용법</a></li>
+      <li><a href="debugging.html">디버깅 가이드</a></li>
+      <li><a href="testing.html">시험 절차</a></li>
+      <li><a href="troubleshooting.html">트러블슈팅</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">히스토리</div><ul><li><a href="history.html">이력과 변경</a></li></ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">auto-rtt-viewer</a> / 트러블슈팅</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>트러블슈팅</h1>
+  <p style="color:var(--subtext0); font-size:1.05rem;">
+    증상별로 빠르게 원인과 조치를 찾을 수 있게, 설치·실행·연결·출력·입력·인코딩 각 영역의 트러블슈팅을 한 페이지에 모았습니다.
+  </p>
+
+  <h2 id="install">1. 설치·환경 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>Activate.ps1 파일을 로드할 수 없습니다</code></td>
+        <td><a href="install.html#step-2-2">설치 §2.2</a>의 실행 정책 설정이 안 되어 있음. 또는 일회성 우회로 <code>.\.venv\Scripts\auto-rtt-viewer.exe</code> 직접 호출 가능.</td>
+      </tr>
+      <tr>
+        <td><code>[.dev] is not a valid editable requirement</code></td>
+        <td><a href="install.html#step-2-3">설치 §2.3</a> 명령의 따옴표·점 위치 오타. 정답: <code>pip install -e ".[dev]"</code></td>
+      </tr>
+      <tr>
+        <td>프롬프트에 <code>(.venv)</code>가 안 뜸</td>
+        <td><a href="install.html#step-2-4">설치 §2.4</a>의 <strong>Python: Select Interpreter</strong> 설정이 안 되어 있거나, 터미널을 그 설정 전에 열어둠. 터미널을 닫고 새로 엽니다.</td>
+      </tr>
+      <tr>
+        <td><code>auto-rtt-viewer: command not found</code></td>
+        <td>venv가 활성화되지 않은 상태. 프롬프트에 <code>(.venv)</code>가 있는지 먼저 확인.</td>
+      </tr>
+      <tr>
+        <td><code>auto-rtt-viewer --version</code>이 동작 안 함</td>
+        <td><code>pip install -e ".[dev]"</code>가 실패했을 가능성. <code>pip list</code>로 <code>auto-rtt-viewer</code> 표시되는지 확인 후 재설치.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="connection">2. 연결 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>JLinkException: Could not open J-Link</code></td>
+        <td>J-Link SW 미설치, <strong>또는 JFlash·RTT Viewer GUI·Ozone 등 다른 프로그램이 프로브를 점유 중</strong>. <a href="usage.html#jflash">사용법 §4</a> 참고 — 다른 도구 종료 후 자동 재연결됨.</td>
+      </tr>
+      <tr>
+        <td><code>JLinkException: Target system has no power.</code></td>
+        <td>타겟 보드 전원이 꺼져 있음. 전원 인가하면 자동 재연결.</td>
+      </tr>
+      <tr>
+        <td><code>target_connected()=False</code></td>
+        <td>SWD 결선·전원 공급 확인. <code>--speed 500</code>처럼 속도를 낮춰 재시도.</td>
+      </tr>
+      <tr>
+        <td><code>RTT Control Block not found</code></td>
+        <td>펌웨어가 RTT 초기화를 안 했거나 주소가 다름. 프로파일의 <code>cb_search</code>를 <code>auto</code> 또는 <code>range</code>로 바꿔서 재시도.</td>
+      </tr>
+      <tr>
+        <td>SEGGER J-Link 선택창이 매 실행마다 뜸</td>
+        <td>프로세스 재실행 시에는 정상 (SN 기억이 휘발). <code>--serial &lt;SN&gt;</code>으로 고정 지정하면 됨. 같은 프로세스 내에서 매번 뜬다면 첫 연결이 <code>_remember_serial</code>에 도달 못한 경우.</td>
+      </tr>
+      <tr>
+        <td><code>WARN  지정 SN=... 열기 실패 → 기본 선택으로 fallback</code></td>
+        <td>세션에 기억된 SN의 프로브가 더 이상 PC에 연결되어 있지 않음. 자동으로 SEGGER 기본 동작으로 넘어가므로 추가 조치 불필요.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="logs">3. 로그·출력 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>아무 로그도 안 나옴</td>
+        <td><a href="debugging.html#diag-no-log">디버깅 §9.1</a> 체크리스트 참고. 순서: venv 활성화 → <code>--version</code> 동작 → J-Link USB → SEGGER SW 설치 → <code>--speed 1000</code> 저속 시도 → 점유 충돌 확인.</td>
+      </tr>
+      <tr>
+        <td>부트로더 로그는 나오는데 앱 로그가 안 나옴</td>
+        <td><a href="debugging.html#diag-bootloader-only">디버깅 §9.2</a> 참고. <code>RTT CB 변경 감지</code> + <code>RTT 버퍼 변경</code> 로그가 떴는지 확인. 안 떴다면 <code>cb_search.mode=auto</code>인지 확인 (fixed여야 감지 가능).</td>
+      </tr>
+      <tr>
+        <td>연결 끊김이 감지 안 됨</td>
+        <td><a href="debugging.html#diag-no-disc">디버깅 §9.3</a> 참고. <code>cb_search.mode=fixed</code>인지, <code>reconnect.poll_interval_ms</code>가 너무 크지 않은지 확인.</td>
+      </tr>
+      <tr>
+        <td>같은 에러가 계속 도배됨</td>
+        <td>30초 요약 전이라면 정상 — 스팸 억제는 30초마다 1회 요약. <a href="debugging.html#diag-spam">디버깅 §9.4</a> 참고.</td>
+      </tr>
+      <tr>
+        <td>로그 파일이 자라지 않음</td>
+        <td><code>--logfile PATH</code>로 명시했는지 확인. 경로의 폴더는 자동 생성되지만 파일 쓰기 권한이 없으면 실패.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="input">4. 입력 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>TeraTerm에서 키를 쳐도 타겟이 반응 안 함</td>
+        <td>펌웨어가 downchannel 0을 읽고 있는지, 프로파일의 <code>write.line_terminator</code>가 펌웨어 파서의 기대와 맞는지 확인.</td>
+      </tr>
+      <tr>
+        <td>VSCode 터미널 입력이 타겟에 안 들어감</td>
+        <td><code>--no-stdin</code>이 지정되어 있는지 확인. 기본은 stdin 켜짐.</td>
+      </tr>
+      <tr>
+        <td>TeraTerm 접속 자체가 안 됨</td>
+        <td><code>auto-rtt-viewer</code>가 실행 중인지 확인. <code>--no-telnet</code>이 지정되어 있는지 확인. 포트를 바꿨다면 (<code>--telnet-port</code>) 그 포트로 접속.</td>
+      </tr>
+      <tr>
+        <td>raw 모드 입력이 즉시 안 보내짐 (Windows)</td>
+        <td>현재 Windows에서 <code>write.mode: raw</code>는 line 모드와 동일하게 동작 (알려진 한계). Enter 입력 시점에 전송됨.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="encoding">5. 인코딩 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>한글이 <code>����</code> 로 깨짐</td>
+        <td>PowerShell 기본 cp949. 터미널에서 한 번 <code>chcp 65001</code> 실행. 영구 적용은 <a href="install.html#encoding">설치 §4</a>의 VSCode <code>settings.json</code> 터미널 프로파일 설정 참고.</td>
+      </tr>
+      <tr>
+        <td>로그 파일을 메모장에서 열면 깨짐</td>
+        <td>파일은 UTF-8로 기록됨. VSCode·메모장(최신)·터미널 <code>type</code> (chcp 65001 후)로 정상 표시됨.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="shutdown">6. 종료 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><kbd>Ctrl</kbd>+<kbd>C</kbd> 누른 후 한참 안 끝남</td>
+        <td>RTT close + Telnet 정리 등으로 수 초 소요될 수 있음. 10초 이상이면 비정상 — issue 보고 권장.</td>
+      </tr>
+      <tr>
+        <td>재실행 시 "프로브 점유 중" 에러</td>
+        <td>이전 프로세스가 비정상 종료해 J-Link DLL 핸들이 남아있는 경우. <strong>Windows 작업 관리자에서 좀비 python 프로세스 확인 후 강제 종료</strong>. SEGGER J-Link Commander 자체를 다시 실행해도 정리 가능.</td>
+      </tr>
+      <tr>
+        <td>로그 파일 마지막 라인이 잘림</td>
+        <td>비정상 종료(예: 프로세스 강제 kill). 정상 <kbd>Ctrl</kbd>+<kbd>C</kbd>면 플러시 보장.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="tests">7. 테스트 / 회귀 문제</h2>
+  <table>
+    <thead><tr><th>증상</th><th>원인 / 해결</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>pytest tests/</code> 실패</td>
+        <td>실패한 테스트 이름을 보고 범위 좁힘 — <code>tests/test_connector.py::test_xxx</code> 단독 실행. 회귀라면 직전 커밋과 diff 비교.</td>
+      </tr>
+      <tr>
+        <td><code>pytest-asyncio</code> 관련 경고</td>
+        <td><code>pyproject.toml</code>의 <code>asyncio_mode = "strict"</code>가 적용되도록 <code>pip install -e ".[dev]"</code> 재설치.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="cross-ref">교차 참조 (어디서 더 볼지)</h2>
+  <ul>
+    <li>설치 단계 자체에 막힘 → <a href="install.html">설치</a></li>
+    <li>옵션 의미 / 기본값 / 예시 → <a href="usage.html">사용법</a></li>
+    <li>로그 한 줄의 의미·코드 위치가 알고 싶음 → <a href="debugging.html">디버깅 가이드</a></li>
+    <li>AC1~AC9 회귀 검증 절차 → <a href="testing.html">시험 절차</a></li>
+    <li>RTT·pylink·SWD 동작 원리 → <a href="rtt-reference.html">J-Link RTT 메커니즘</a></li>
+  </ul>
+
+  <nav class="page-nav">
+    <a class="prev" href="testing.html"><span class="label">← 이전</span>시험 절차</a>
+    <a class="next" href="history.html"><span class="label">다음 →</span>이력과 변경</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>auto-rtt-viewer wiki · 최근 검토 2026-05-18</div>
+    <div>출처: <code>projects/auto-rtt-viewer/docs/사용방법/사용법.md §8 + 디버깅 가이드.md §9</code></div>
+  </footer>
+</main>
+
+</div>
+</body>
+</html>
