@@ -787,6 +787,21 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
 }
 .scenario > li.note::before { display: none; }
 
+/* === Sequence Diagram (직접 SVG — 진짜 시각화, Mermaid 대체) === */
+.seq-svg {
+  display: block;
+  max-width: 100%;
+  width: 100%;
+  height: auto;
+  margin: 24px 0;
+  background: linear-gradient(160deg, var(--mantle), var(--crust));
+  border: 1px solid var(--surface0);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  box-sizing: border-box;
+}
+
 /* ====== Images ====== */
 img.figure {
   max-width: 100%;
