@@ -482,14 +482,46 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
 
 /* ====== Mermaid ====== */
 .mermaid {
-  background: var(--mantle);
+  background: linear-gradient(160deg, var(--mantle), var(--crust));
   border: 1px solid var(--surface0);
-  border-radius: 8px;
-  padding: 20px 16px;
-  margin: 20px 0;
+  border-radius: 12px;
+  padding: 28px 22px;
+  margin: 24px 0;
   text-align: center;
   overflow-x: auto;
   overflow-y: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+/* 선 굵기·점선 명확화 — 실선과 점선 시각 분리 */
+.mermaid .edgePath path,
+.mermaid .flowchart-link {
+  stroke-width: 1.4 !important;
+}
+.mermaid .messageLine0 {
+  stroke-width: 1.4 !important;
+}
+.mermaid .messageLine1 {
+  stroke-width: 1.4 !important;
+  stroke-dasharray: 4 3 !important;
+}
+.mermaid .actor-line {
+  stroke-dasharray: 3 5 !important;
+  opacity: 0.55;
+  stroke-width: 1 !important;
+}
+/* 노드 텍스트 굵기 — 너무 굵지 않게 */
+.mermaid .nodeLabel,
+.mermaid .label {
+  font-weight: 500 !important;
+}
+.mermaid .messageText,
+.mermaid .actor text {
+  font-weight: 450 !important;
+}
+/* state diagram 노드 모서리 부드럽게 */
+.mermaid g.stateGroup rect {
+  rx: 8 !important;
+  ry: 8 !important;
 }
 /* SVG는 viewBox로 비례 축소되므로 부모 폭 안에 fit (글씨 잘림 없이) */
 .mermaid svg {
@@ -521,65 +553,70 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
   white-space: nowrap;
 }
 
-/* === Custom Step Chain (compact — 11 step이 한 화면에 보이도록 압축) === */
+/* === Custom Step Chain (minimal — 세련된 톤, num은 투명 배지) === */
 .step-chain {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  margin: 22px 0;
-  padding: 16px 12px;
-  background: var(--mantle);
-  border: 1px solid var(--surface0);
-  border-radius: 10px;
+  align-items: stretch;
+  gap: 10px;
+  margin: 24px auto;
+  padding: 0;
+  max-width: 540px;
 }
 .step-chain .step {
-  background: var(--surface0);
-  border: 1.4px solid var(--mauve);
+  background: linear-gradient(180deg, var(--mantle), var(--crust));
+  border: 1px solid var(--surface1);
   border-radius: 8px;
-  padding: 7px 18px;
-  font-size: 0.86rem;
+  padding: 10px 16px;
+  font-size: 0.88rem;
   color: var(--text);
-  min-width: 280px;
   text-align: left;
   position: relative;
-  font-weight: 500;
+  font-weight: 400;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.step-chain .step:hover {
+  border-color: var(--lavender);
+  transform: translateX(2px);
 }
 .step-chain .step .num {
   font-family: "JetBrains Mono", "Fira Code", "D2Coding", "Consolas", monospace;
-  font-size: 0.68rem;
-  background: var(--mauve);
-  color: var(--base);
-  padding: 2px 8px;
-  border-radius: 999px;
-  letter-spacing: 0.04em;
-  font-weight: 700;
+  font-size: 0.7rem;
+  background: transparent;
+  color: var(--lavender);
+  border: 1px solid var(--surface2);
+  padding: 2px 9px;
+  border-radius: 5px;
+  letter-spacing: 0.05em;
+  font-weight: 600;
   flex-shrink: 0;
+  min-width: 56px;
+  text-align: center;
 }
 .step-chain .step .name {
   flex: 1;
+  color: var(--subtext1);
+  font-size: 0.86rem;
 }
 .step-chain .step:not(:last-child)::after {
   content: '';
   position: absolute;
-  bottom: -14px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 2px;
-  height: 8px;
-  background: var(--overlay1);
+  bottom: -7px;
+  left: 38px;
+  width: 1px;
+  height: 4px;
+  background: var(--overlay0);
 }
 .step-chain .step:not(:last-child)::before {
   content: '';
   position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: var(--overlay1);
+  bottom: -3px;
+  left: 35px;
+  border: 3.5px solid transparent;
+  border-top-color: var(--overlay0);
 }
 
 /* ====== Images ====== */
