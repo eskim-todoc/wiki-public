@@ -491,9 +491,9 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
   overflow-x: auto;
   overflow-y: hidden;
 }
-/* Mermaid가 SVG에 인라인 max-width를 박는 것을 무효화 — 글자 잘림 방지 */
+/* SVG는 viewBox로 비례 축소되므로 부모 폭 안에 fit (글씨 잘림 없이) */
 .mermaid svg {
-  max-width: none !important;
+  max-width: 100% !important;
   width: auto !important;
   height: auto !important;
   display: inline-block;
@@ -521,39 +521,39 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
   white-space: nowrap;
 }
 
-/* === Custom Step Chain (단순 순차 flowchart 대체 — Mermaid 노드 폭 한계 회피) === */
+/* === Custom Step Chain (compact — 11 step이 한 화면에 보이도록 압축) === */
 .step-chain {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 32px;
-  margin: 28px 0;
-  padding: 24px 12px;
+  gap: 18px;
+  margin: 22px 0;
+  padding: 16px 12px;
   background: var(--mantle);
   border: 1px solid var(--surface0);
   border-radius: 10px;
 }
 .step-chain .step {
   background: var(--surface0);
-  border: 1.5px solid var(--mauve);
-  border-radius: 10px;
-  padding: 12px 26px;
-  font-size: 0.96rem;
+  border: 1.4px solid var(--mauve);
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 0.86rem;
   color: var(--text);
-  min-width: 300px;
+  min-width: 280px;
   text-align: left;
   position: relative;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 .step-chain .step .num {
   font-family: "JetBrains Mono", "Fira Code", "D2Coding", "Consolas", monospace;
-  font-size: 0.74rem;
+  font-size: 0.68rem;
   background: var(--mauve);
   color: var(--base);
-  padding: 3px 9px;
+  padding: 2px 8px;
   border-radius: 999px;
   letter-spacing: 0.04em;
   font-weight: 700;
@@ -565,20 +565,20 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
 .step-chain .step:not(:last-child)::after {
   content: '';
   position: absolute;
-  bottom: -26px;
+  bottom: -14px;
   left: 50%;
   transform: translateX(-50%);
   width: 2px;
-  height: 16px;
+  height: 8px;
   background: var(--overlay1);
 }
 .step-chain .step:not(:last-child)::before {
   content: '';
   position: absolute;
-  bottom: -14px;
+  bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
-  border: 6px solid transparent;
+  border: 5px solid transparent;
   border-top-color: var(--overlay1);
 }
 
