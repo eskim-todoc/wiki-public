@@ -51,18 +51,61 @@
   </p>
 
   <h2 id="overview">1. J-Link RTT 개요</h2>
-  <pre class="mermaid">
-flowchart LR
-    PC["PC<br/>auto-rtt-viewer"]
-    JL["J-Link Probe"]
-    MCU["MCU<br/>Cortex-M3"]
-    RAM[("Target RAM<br/>SEGGER_RTT CB + Up/Down 버퍼")]
+  <svg viewBox="0 0 940 260" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="rtt1-t rtt1-d">
+    <title id="rtt1-t">J-Link RTT 데이터 흐름 개요</title>
+    <desc id="rtt1-d">PC(auto-rtt-viewer) ⇄ J-Link Probe (USB·JLinkARM.dll) ⇄ MCU(Cortex-M3) (SWD) ⇄ Target RAM (메모리 버스). J-Link Probe가 Target RAM에 직접 read/write (점선 우회 경로 — RTT 본질).</desc>
+    <defs>
+      <marker id="arr-r" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto-start-reverse">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .nb { fill: var(--surface0); stroke-width: 1.4; }
+      .nb-pc { stroke: var(--blue); }
+      .nb-jl { stroke: var(--lavender); }
+      .nb-mcu { stroke: var(--mauve); }
+      .nb-ram { stroke: var(--teal); }
+      .nt { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 12px; text-anchor: middle; font-weight: 600; }
+      .ns { fill: var(--subtext0); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 10px; text-anchor: middle; }
+      .el { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .es { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; stroke-linejoin: round; }
+      .elb { fill: var(--subtext0); font-family: "JetBrains Mono",monospace; font-size: 10px; text-anchor: middle; font-weight: 500; }
+      .elbg { fill: var(--mantle); }
+    </style>
 
-    PC <-->|USB, JLinkARM.dll| JL
-    JL <-->|SWD| MCU
-    MCU <-->|메모리 버스| RAM
-    JL -.RAM read/write.-> RAM
-  </pre>
+    <rect class="nb nb-pc" x="20" y="80" width="180" height="70" rx="10"/>
+    <text class="nt" x="110" y="108">PC</text>
+    <text class="ns" x="110" y="128">auto-rtt-viewer</text>
+
+    <rect class="nb nb-jl" x="260" y="80" width="180" height="70" rx="10"/>
+    <text class="nt" x="350" y="108">J-Link Probe</text>
+    <text class="ns" x="350" y="128">JLinkARM.dll</text>
+
+    <rect class="nb nb-mcu" x="500" y="80" width="180" height="70" rx="10"/>
+    <text class="nt" x="590" y="108">MCU</text>
+    <text class="ns" x="590" y="128">Cortex-M3</text>
+
+    <rect class="nb nb-ram" x="740" y="80" width="180" height="70" rx="35"/>
+    <text class="nt" x="830" y="108">Target RAM</text>
+    <text class="ns" x="830" y="128">_SEGGER_RTT + 버퍼</text>
+
+    <line class="el" x1="206" y1="115" x2="254" y2="115" marker-start="url(#arr-r)" marker-end="url(#arr-r)"/>
+    <rect class="elbg" x="210" y="60" width="40" height="13"/>
+    <text class="elb" x="230" y="70">USB</text>
+
+    <line class="el" x1="446" y1="115" x2="494" y2="115" marker-start="url(#arr-r)" marker-end="url(#arr-r)"/>
+    <rect class="elbg" x="450" y="60" width="40" height="13"/>
+    <text class="elb" x="470" y="70">SWD</text>
+
+    <line class="el" x1="686" y1="115" x2="734" y2="115" marker-start="url(#arr-r)" marker-end="url(#arr-r)"/>
+    <rect class="elbg" x="676" y="60" width="68" height="13"/>
+    <text class="elb" x="710" y="70">메모리 버스</text>
+
+    <path class="es" d="M 350 150 L 350 210 L 830 210 L 830 150" marker-end="url(#arr-r)"/>
+    <rect class="elbg" x="550" y="200" width="100" height="13"/>
+    <text class="elb" x="600" y="210">RAM read/write</text>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 1</span>J-Link RTT 데이터 흐름 — 4 노드 가로 체인 (실선=물리 인터페이스), J-Link Probe가 Target RAM에 직접 read/write (점선=RTT 본질)</p>
 
   <ul>
     <li><strong>RTT(Real-Time Transfer)</strong>: 타겟 RAM에 <code>_SEGGER_RTT</code> Control Block(이하 CB)을 두고, 호스트 J-Link가 SWD로 RAM을 직접 읽고 써서 비침습적(non-intrusive) 통신을 구현.</li>
@@ -115,29 +158,105 @@ flowchart LR
 
   <h2 id="initial-msg">4. "초기 부팅 메시지를 놓치지 않는" 조건 분석</h2>
   <p>수용 기준 AC2를 충족하려면 다음이 필요하다.</p>
-  <pre class="mermaid">
-sequenceDiagram
-    participant Host as auto-rtt-viewer
-    participant Probe as J-Link 프로브
-    participant MCU as 타겟 MCU
-    participant RTT as RTT CB (in RAM)
+  <svg viewBox="0 0 760 580" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="boot-t boot-d">
+    <title id="boot-t">초기 부팅 메시지 캡처 sequence</title>
+    <desc id="boot-d">타겟 전원 OFF 동안 Host가 짧은 주기로 connect 재시도, 전원 ON 후 MCU가 SEGGER_RTT_Init() 호출, Host의 다음 재시도가 성공, rtt_start로 CB 검색 후 높은 빈도로 rtt_read 폴링.</desc>
+    <defs>
+      <marker id="arr-b" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .ab { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
+      .at { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 11px; text-anchor: middle; dominant-baseline: middle; font-weight: 500; }
+      .rs-host { fill: var(--mauve); }
+      .rs-probe { fill: var(--lavender); }
+      .rs-mcu { fill: var(--teal); }
+      .rs-rtt { fill: var(--sapphire); }
+      .ll { stroke: var(--surface2); stroke-dasharray: 4 4; stroke-width: 1; opacity: 0.5; }
+      .ml { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .ms { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1; stroke-dasharray: 5 3; fill: none; }
+      .mt { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; text-anchor: middle; }
+      .mn { fill: var(--overlay1); font-family: "JetBrains Mono",monospace; font-size: 8.5px; letter-spacing: 0.06em; font-weight: 500; }
+      .nb { fill: none; stroke: var(--peach); stroke-dasharray: 4 4; stroke-width: 1; }
+      .nt { fill: var(--peach); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; font-style: italic; text-anchor: middle; }
+      .bb { fill: none; stroke: var(--surface2); stroke-dasharray: 5 4; stroke-width: 1; }
+      .blb { fill: var(--base); stroke: var(--sapphire); stroke-width: 1; }
+      .blt { fill: var(--sapphire); font-family: "JetBrains Mono",monospace; font-size: 9.5px; font-weight: 600; letter-spacing: 0.1em; text-anchor: middle; }
+    </style>
 
-    Note over MCU: 전원 OFF
-    loop 짧은 주기로 재시도
-        Host->>Probe: connect(chip)
-        Probe-->>Host: 실패 (target 없음)
-    end
-    Note over MCU: 전원 ON → 부팅
-    MCU->>RTT: SEGGER_RTT_Init() (부트로더 초기)
-    Host->>Probe: connect(chip) (곧바로 다음 재시도)
-    Probe-->>Host: 성공
-    Host->>RTT: rtt_start() → CB 검색
-    RTT-->>Host: CB 주소 확정
-    loop 높은 빈도 폴링
-        Host->>RTT: rtt_read(ch 0)
-        RTT-->>Host: 부팅 메시지 (누락 없음)
-    end
-  </pre>
+    <rect class="ab" x="40" y="14" width="160" height="32" rx="6"/>
+    <rect class="rs-host" x="44" y="16" width="152" height="2.5" rx="1.5"/>
+    <text class="at" x="120" y="32">auto-rtt-viewer</text>
+
+    <rect class="ab" x="240" y="14" width="140" height="32" rx="6"/>
+    <rect class="rs-probe" x="244" y="16" width="132" height="2.5" rx="1.5"/>
+    <text class="at" x="310" y="32">J-Link 프로브</text>
+
+    <rect class="ab" x="420" y="14" width="120" height="32" rx="6"/>
+    <rect class="rs-mcu" x="424" y="16" width="112" height="2.5" rx="1.5"/>
+    <text class="at" x="480" y="32">타겟 MCU</text>
+
+    <rect class="ab" x="580" y="14" width="160" height="32" rx="6"/>
+    <rect class="rs-rtt" x="584" y="16" width="152" height="2.5" rx="1.5"/>
+    <text class="at" x="660" y="32">RTT CB (in RAM)</text>
+
+    <line class="ll" x1="120" y1="50" x2="120" y2="570"/>
+    <line class="ll" x1="310" y1="50" x2="310" y2="570"/>
+    <line class="ll" x1="480" y1="50" x2="480" y2="570"/>
+    <line class="ll" x1="660" y1="50" x2="660" y2="570"/>
+
+    <rect class="nb" x="380" y="60" width="200" height="22" rx="6"/>
+    <text class="nt" x="480" y="75">타겟 MCU 전원 OFF</text>
+
+    <rect class="bb" x="80" y="100" width="320" height="100" rx="8"/>
+    <rect class="blb" x="90" y="92" width="124" height="16" rx="3"/>
+    <text class="blt" x="152" y="104">짧은 주기 재시도</text>
+
+    <text class="mn" x="128" y="124">01.1</text>
+    <line class="ml" x1="120" y1="130" x2="307" y2="130" marker-end="url(#arr-b)"/>
+    <text class="mt" x="215" y="126">connect(chip)</text>
+
+    <text class="mn" x="318" y="174">01.2</text>
+    <line class="ms" x1="310" y1="180" x2="121" y2="180" marker-end="url(#arr-b)"/>
+    <text class="mt" x="215" y="176">실패 (target 없음)</text>
+
+    <rect class="nb" x="380" y="218" width="200" height="22" rx="6"/>
+    <text class="nt" x="480" y="233">타겟 MCU 전원 ON → 부팅</text>
+
+    <text class="mn" x="488" y="262">02</text>
+    <line class="ml" x1="480" y1="268" x2="657" y2="268" marker-end="url(#arr-b)"/>
+    <text class="mt" x="568" y="264">SEGGER_RTT_Init() (부트로더 초기)</text>
+
+    <text class="mn" x="128" y="294">03</text>
+    <line class="ml" x1="120" y1="300" x2="307" y2="300" marker-end="url(#arr-b)"/>
+    <text class="mt" x="215" y="296">connect(chip) — 다음 재시도</text>
+
+    <text class="mn" x="318" y="324">04</text>
+    <line class="ms" x1="310" y1="330" x2="121" y2="330" marker-end="url(#arr-b)"/>
+    <text class="mt" x="215" y="326">성공</text>
+
+    <text class="mn" x="128" y="354">05</text>
+    <line class="ml" x1="120" y1="360" x2="657" y2="360" marker-end="url(#arr-b)"/>
+    <text class="mt" x="390" y="356">rtt_start() → CB 검색</text>
+
+    <text class="mn" x="668" y="384">06</text>
+    <line class="ms" x1="660" y1="390" x2="121" y2="390" marker-end="url(#arr-b)"/>
+    <text class="mt" x="390" y="386">CB 주소 확정</text>
+
+    <rect class="bb" x="80" y="410" width="600" height="120" rx="8"/>
+    <rect class="blb" x="90" y="402" width="124" height="16" rx="3"/>
+    <text class="blt" x="152" y="414">높은 빈도 폴링</text>
+
+    <text class="mn" x="128" y="442">07.1</text>
+    <line class="ml" x1="120" y1="448" x2="657" y2="448" marker-end="url(#arr-b)"/>
+    <text class="mt" x="390" y="444">rtt_read(ch 0)</text>
+
+    <text class="mn" x="668" y="488">07.2</text>
+    <line class="ms" x1="660" y1="494" x2="121" y2="494" marker-end="url(#arr-b)"/>
+    <text class="mt" x="390" y="490">부팅 메시지 (누락 없음)</text>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 2</span>초기 부팅 메시지 캡처 — 전원 OFF 재시도 → 전원 ON 후 첫 재시도 성공 → CB 검색 → 높은 빈도 폴링</p>
 
   <h3 id="loss-risk">4.1 메시지 유실 가능성</h3>
   <ul>

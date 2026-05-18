@@ -82,30 +82,24 @@
   </table>
 
   <h2 id="architecture-overview">3. 아키텍처 개요</h2>
-  <pre class="mermaid">
-flowchart LR
-    subgraph Host[auto-rtt-viewer 프로세스]
-        CLI[cli.py<br/>argparse + asyncio.run] --> CFG[config.py<br/>AppConfig.from_yaml]
-        CFG --> CONN[connector.py<br/>JLinkConnector.run]
-        CONN --> EV[events.py<br/>EventBus]
-        CONN -->|reader| RR[rtt_io.py<br/>RttReader]
-        CONN -->|writer| RW[rtt_io.py<br/>RttWriter]
-        CONN -->|supervise| SV[("_supervise<br/>target_connected<br/>+ CB probe<br/>+ CB snapshot diff")]
-        RR --> OQ((out_queue))
-        EV --> OQ
-        OQ --> DISP[pipeline.py<br/>OutputDispatcher]
-        DISP --> SO[sinks.py<br/>StdoutSink]
-        DISP --> SF[sinks.py<br/>FileSink]
-        DISP --> ST[telnet_server.py<br/>TelnetServer]
-        IS[sources.py<br/>StdinSource] --> IQ((in_queue))
-        ST --> IQ
-        IQ --> RW
-    end
-
-    CONN <-->|pylink / JLinkARM.dll| PROBE[J-Link<br/>Probe]
-    PROBE <-->|SWD / JTAG| MCU[Target MCU<br/>Cortex-M3]
-    MCU <--> RAM[("Target RAM<br/>_SEGGER_RTT @ 0x20000000<br/>aUp/aDown 버퍼")]
-  </pre>
+  <p>auto-rtt-viewer 프로세스 내부 흐름과 외부 하드웨어 연결은 두 다이어그램으로 분리되어 다른 페이지에 정의되어 있습니다 — 본 페이지는 그 위에서 동작하는 supervise·CB 변경 감지·SN 기억 등 <strong>run-time 세부 동작</strong>을 다룹니다.</p>
+  <div class="card-grid" style="grid-template-columns: 1fr 1fr;">
+    <a class="card" href="architecture.html#runtime" style="text-decoration: none;">
+      <div class="card-title" style="color: var(--mauve);">호스트 프로세스 내부 →</div>
+      <div class="card-body">
+        CLI → Config → Connector → Reader/Writer/Events/Supervise → OutQ/InQ → Dispatcher → Sinks / Sources의 5 zone 흐름.
+        <br><br><strong style="color: var(--lavender); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Fig 4 · architecture §4 런타임</strong>
+      </div>
+    </a>
+    <a class="card" href="rtt-reference.html#overview" style="text-decoration: none;">
+      <div class="card-title" style="color: var(--teal);">외부 하드웨어 연결 →</div>
+      <div class="card-body">
+        PC ⇄ J-Link Probe (USB) ⇄ MCU Cortex-M3 (SWD) ⇄ Target RAM (메모리 버스). Probe가 RAM에 직접 read/write (RTT 본질).
+        <br><br><strong style="color: var(--lavender); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">Fig 1 · rtt-reference §1 RTT 개요</strong>
+      </div>
+    </a>
+  </div>
+  <p>본 페이지의 supervise(<code>target_connected + CB probe + CB snapshot diff</code>) 동작은 위 architecture §4의 <code>connector.py</code> 노드 내부 sub-task입니다. 아래 §4 런타임 흐름·§5 주요 기능에서 connector 안에서 이 supervise가 어떻게 돌아가는지 상세히 다룹니다.</p>
 
   <h3>큐 의미</h3>
   <ul>
@@ -116,17 +110,78 @@ flowchart LR
 
   <h2 id="runtime-flow">4. 런타임 흐름 — 연결부터 종료까지</h2>
   <h3>4.1 전체 상태 머신</h3>
-  <pre class="mermaid">
-stateDiagram-v2
-    [*] --> Connecting
-    Connecting --> Connecting: _connect 실패 (retry_interval_ms 후 재시도)
-    Connecting --> Connected: _connect OK + _rtt_start OK + _snapshot_and_log_cb OK
-    Connected --> Disconnected: supervise return<br/>(target_connected=False,<br/>memory_read 예외,<br/>CB 변경 감지)
-    Connected --> Disconnected: reader/writer 예외 (JLinkException 등)
-    Disconnected --> Connecting: teardown 후 즉시
-    Connected --> [*]: Ctrl+C
-    Connecting --> [*]: Ctrl+C
-  </pre>
+  <svg viewBox="0 0 780 360" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="fsm2-t fsm2-d">
+    <title id="fsm2-t">연결 상태 머신 (FSM) — debugging detail</title>
+    <desc id="fsm2-d">Connecting (self-loop retry) → Connected (supervise return + reader/writer 예외로 Disconnected) → Disconnected → Connecting (teardown). Connecting/Connected에서 Ctrl+C로 종료.</desc>
+    <defs>
+      <marker id="arr-fsm2" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .st { fill: var(--surface0); stroke-width: 1.5; }
+      .st-c { stroke: var(--yellow); }
+      .st-o { stroke: var(--green); }
+      .st-d { stroke: var(--peach); }
+      .st-t { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 13px; text-anchor: middle; font-weight: 600; }
+      .st-s { fill: var(--subtext0); font-family: "Pretendard",sans-serif; font-size: 9.5px; text-anchor: middle; }
+      .start { fill: var(--text); }
+      .end-o { fill: none; stroke: var(--text); stroke-width: 1.5; }
+      .end-i { fill: var(--text); }
+      .tr { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.4; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+      .tr-end { stroke: var(--overlay1); color: var(--overlay1); stroke-width: 1.2; fill: none; stroke-dasharray: 4 3; stroke-linejoin: round; stroke-linecap: round; }
+      .tl { fill: var(--subtext0); font-family: "JetBrains Mono",monospace; font-size: 9px; text-anchor: middle; }
+      .tlb { fill: var(--mantle); }
+    </style>
+
+    <circle class="start" cx="40" cy="90" r="7"/>
+
+    <rect class="st st-c" x="100" y="60" width="180" height="60" rx="10"/>
+    <text class="st-t" x="190" y="88">Connecting</text>
+    <text class="st-s" x="190" y="104">_connect + retry</text>
+
+    <rect class="st st-o" x="440" y="60" width="180" height="60" rx="10"/>
+    <text class="st-t" x="530" y="88">Connected</text>
+    <text class="st-s" x="530" y="104">_rtt_start + supervise</text>
+
+    <rect class="st st-d" x="270" y="230" width="180" height="60" rx="10"/>
+    <text class="st-t" x="360" y="258">Disconnected</text>
+    <text class="st-s" x="360" y="274">teardown 후 대기</text>
+
+    <circle class="end-o" cx="680" cy="260" r="10"/>
+    <circle class="end-i" cx="680" cy="260" r="4"/>
+
+    <line class="tr" x1="48" y1="90" x2="96" y2="90" marker-end="url(#arr-fsm2)"/>
+
+    <path class="tr" d="M 130 60 Q 110 22 160 16 Q 220 16 220 56" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="142" y="4" width="116" height="11"/>
+    <text class="tl" x="200" y="13">_connect 실패 → retry</text>
+
+    <line class="tr" x1="280" y1="90" x2="436" y2="90" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="288" y="76" width="142" height="11"/>
+    <text class="tl" x="358" y="85">_connect+_rtt_start+snapshot</text>
+
+    <path class="tr" d="M 510 120 L 510 180 L 410 180 L 410 230" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="360" y="160" width="140" height="11"/>
+    <text class="tl" x="430" y="169">supervise return (3종)</text>
+
+    <path class="tr" d="M 490 120 L 490 200 L 380 200 L 380 230" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="338" y="190" width="160" height="11"/>
+    <text class="tl" x="418" y="199">reader/writer JLinkException</text>
+
+    <path class="tr" d="M 270 260 L 200 260 L 200 120" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="170" y="184" width="62" height="11"/>
+    <text class="tl" x="201" y="193">teardown</text>
+
+    <path class="tr-end" d="M 620 100 L 670 100 L 670 250" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="632" y="168" width="56" height="11"/>
+    <text class="tl" x="660" y="177">Ctrl+C</text>
+
+    <path class="tr-end" d="M 280 70 Q 660 30 670 250" marker-end="url(#arr-fsm2)"/>
+    <rect class="tlb" x="460" y="38" width="50" height="11"/>
+    <text class="tl" x="485" y="47">Ctrl+C</text>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 7</span>연결 상태 머신 — supervise return(3종) + reader/writer 예외로 Disconnected 전이, teardown 후 즉시 Connecting 복귀</p>
 
   <h3>4.2 <code>JLinkConnector.run()</code> 골격</h3>
   <pre class="language-python"><code>while True:
@@ -198,23 +253,94 @@ else:         jlink.open()</code></pre>
     <li><strong>파일 저장 없음</strong>. <kbd>Ctrl</kbd>+<kbd>C</kbd> 종료 = 기억 휘발.</li>
   </ul>
 
-  <pre class="mermaid">
-sequenceDiagram
-    participant U as 사용자
-    participant A as auto-rtt-viewer
-    participant P as pylink
-    Note over A: 실행 시작 (_session_sn=None)
-    U->>A: auto-rtt-viewer
-    A->>P: open()  (SN 미지정)
-    P-->>U: SEGGER 선택창 (2개 이상일 때만)
-    U->>P: SN=123456789 선택
-    P-->>A: open OK
-    A->>P: serial_number
-    P-->>A: 123456789
-    A->>A: _session_sn = 123456789
-    Note over A: 전원 OFF/ON, JFlash 등으로 재연결 트리거
-    A->>P: open(serial_no=123456789) → 선택창 없이 즉시 열림
-  </pre>
+  <svg viewBox="0 0 700 460" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="sn-t sn-d">
+    <title id="sn-t">J-Link SN 세션 기억 sequence</title>
+    <desc id="sn-d">실행 시작 시 _session_sn=None. 사용자가 도구를 실행하면 pylink.open() 호출 → SEGGER 선택창(프로브 2개 이상일 때) → 사용자 선택 → open OK → serial_number 조회 → _session_sn 저장. 이후 재연결 트리거 시 open(serial_no=...)로 선택창 없이 즉시 열림.</desc>
+    <defs>
+      <marker id="arr-sn" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .ab { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
+      .at { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 11px; text-anchor: middle; dominant-baseline: middle; font-weight: 500; }
+      .rs-u { fill: var(--peach); }
+      .rs-a { fill: var(--mauve); }
+      .rs-p { fill: var(--lavender); }
+      .ll { stroke: var(--surface2); stroke-dasharray: 4 4; stroke-width: 1; opacity: 0.5; }
+      .ml { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .ms { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1; stroke-dasharray: 5 3; fill: none; }
+      .mp { stroke: var(--peach); color: var(--peach); stroke-width: 1.4; fill: none; stroke-linejoin: round; }
+      .mt { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; text-anchor: middle; }
+      .mts { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; text-anchor: start; }
+      .mn { fill: var(--overlay1); font-family: "JetBrains Mono",monospace; font-size: 8.5px; letter-spacing: 0.06em; font-weight: 500; }
+      .nb { fill: none; stroke: var(--peach); stroke-dasharray: 4 4; stroke-width: 1; }
+      .nt { fill: var(--peach); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; font-style: italic; text-anchor: middle; }
+    </style>
+
+    <rect class="ab" x="60" y="14" width="80" height="32" rx="6"/>
+    <rect class="rs-u" x="64" y="16" width="72" height="2.5" rx="1.5"/>
+    <text class="at" x="100" y="32">사용자</text>
+
+    <rect class="ab" x="240" y="14" width="160" height="32" rx="6"/>
+    <rect class="rs-a" x="244" y="16" width="152" height="2.5" rx="1.5"/>
+    <text class="at" x="320" y="32">auto-rtt-viewer</text>
+
+    <rect class="ab" x="480" y="14" width="100" height="32" rx="6"/>
+    <rect class="rs-p" x="484" y="16" width="92" height="2.5" rx="1.5"/>
+    <text class="at" x="530" y="32">pylink</text>
+
+    <line class="ll" x1="100" y1="50" x2="100" y2="450"/>
+    <line class="ll" x1="320" y1="50" x2="320" y2="450"/>
+    <line class="ll" x1="530" y1="50" x2="530" y2="450"/>
+
+    <rect class="nb" x="220" y="60" width="200" height="22" rx="6"/>
+    <text class="nt" x="320" y="75">실행 시작 (_session_sn = None)</text>
+
+    <text class="mn" x="108" y="104">01</text>
+    <line class="ml" x1="100" y1="110" x2="317" y2="110" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="210" y="106">auto-rtt-viewer 실행</text>
+
+    <text class="mn" x="328" y="134">02</text>
+    <line class="ml" x1="320" y1="140" x2="527" y2="140" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="423" y="136">open() — SN 미지정</text>
+
+    <text class="mn" x="538" y="164">03</text>
+    <line class="ms" x1="530" y1="170" x2="101" y2="170" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="315" y="166">SEGGER 선택창 (프로브 2개 이상일 때)</text>
+
+    <text class="mn" x="108" y="194">04</text>
+    <line class="ml" x1="100" y1="200" x2="527" y2="200" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="315" y="196">SN=123456789 선택</text>
+
+    <text class="mn" x="538" y="224">05</text>
+    <line class="ms" x1="530" y1="230" x2="321" y2="230" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="425" y="226">open OK</text>
+
+    <text class="mn" x="328" y="254">06</text>
+    <line class="ml" x1="320" y1="260" x2="527" y2="260" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="423" y="256">serial_number 조회</text>
+
+    <text class="mn" x="538" y="284">07</text>
+    <line class="ms" x1="530" y1="290" x2="321" y2="290" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="425" y="286">123456789</text>
+
+    <text class="mn" x="328" y="314">08</text>
+    <path class="mp" d="M 320 319 L 350 319 L 350 330 L 322 330" marker-end="url(#arr-sn)"/>
+    <text class="mts" x="358" y="326">_session_sn = 123456789</text>
+
+    <rect class="nb" x="180" y="350" width="280" height="22" rx="6"/>
+    <text class="nt" x="320" y="365">전원 OFF/ON · JFlash 등 재연결 트리거</text>
+
+    <text class="mn" x="328" y="394">09</text>
+    <line class="ml" x1="320" y1="400" x2="527" y2="400" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="423" y="396">open(serial_no=123456789)</text>
+
+    <text class="mn" x="538" y="424">10</text>
+    <line class="ms" x1="530" y1="430" x2="321" y2="430" marker-end="url(#arr-sn)"/>
+    <text class="mt" x="425" y="426">선택창 없이 즉시 열림</text>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 8</span>J-Link SN 세션 기억 — 첫 연결 시 SN 저장, 재연결 시 선택창 없이 즉시 열림</p>
 
   <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_open_jlink</code> / <code>_remember_serial</code>.</p>
 
@@ -267,25 +393,98 @@ offset 24 + N*24 .. : aDown[M]  — 각 24바이트 (동일 레이아웃)</code>
 
   <p>supervise가 return하면 메인 루프 → teardown → reconnect → <code>_rtt_start</code> 재호출 → <strong>pylink 내부 버퍼 캐시가 새 주소로 갱신</strong>되고 <code>_snapshot_and_log_cb</code>가 <code>변경:</code> 로그 한 줄 더 남김.</p>
 
-  <pre class="mermaid">
-sequenceDiagram
-    participant BL as Bootloader
-    participant APP as App (CM3)
-    participant CB as _SEGGER_RTT (0x20000000)
-    participant SV as supervise (host)
-    participant RS as run (host)
+  <svg viewBox="0 0 820 430" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="cb2-t cb2-d">
+    <title id="cb2-t">CB 변경 감지 sequence — Bootloader→App 전환 (debugging detail)</title>
+    <desc id="cb2-d">Bootloader가 _SEGGER_RTT.aUp[0]을 세팅, supervise가 100ms 주기로 read하며 baseline 저장. BL이 APP로 jump 후 APP이 ConfigUpBuffer(1)·aUp[1]을 새로 세팅하면 supervise가 baseline 불일치 감지 → WARN + return → run loop가 teardown + reconnect + rtt_start로 pylink 내부 캐시를 refresh.</desc>
+    <defs>
+      <marker id="arr-cb2" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto">
+        <path d="M0,0 L7,3.5 L0,7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .ab { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
+      .at { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 10.5px; text-anchor: middle; dominant-baseline: middle; font-weight: 500; }
+      .rs-bl { fill: var(--peach); }
+      .rs-app { fill: var(--mauve); }
+      .rs-cb { fill: var(--teal); }
+      .rs-sv { fill: var(--lavender); }
+      .rs-rs { fill: var(--sapphire); }
+      .ll { stroke: var(--surface2); stroke-dasharray: 4 4; stroke-width: 1; opacity: 0.5; }
+      .ml { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .mp { stroke: var(--peach); color: var(--peach); stroke-width: 1.4; fill: none; stroke-linejoin: round; }
+      .mt { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 10.5px; text-anchor: middle; }
+      .mts { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 10.5px; text-anchor: start; }
+      .mte { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 10.5px; text-anchor: end; }
+      .mn { fill: var(--overlay1); font-family: "JetBrains Mono",monospace; font-size: 8.5px; letter-spacing: 0.06em; font-weight: 500; }
+      .nb { fill: none; stroke: var(--peach); stroke-dasharray: 4 4; stroke-width: 1; }
+      .nt { fill: var(--peach); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 10.5px; font-style: italic; text-anchor: middle; }
+    </style>
 
-    BL->>CB: _DoInit (aUp[0] 세팅)
-    Note over SV: _last_cb_snapshot = {up[0]=0xA..}
-    SV->>CB: 100 ms마다 read → 변화 없음
-    BL->>APP: jump
-    APP->>CB: SEGGER_RTT_ConfigUpBuffer(1, ...)
-    APP->>CB: aUp[1] 세팅 (0xB..)
-    SV->>CB: 다음 폴링 read
-    SV->>SV: baseline != current → WARN + return
-    RS->>RS: teardown + reconnect + _rtt_start
-    Note over RS: pylink 캐시 refresh → 앱 채널 정상 수신
-  </pre>
+    <rect class="ab" x="20" y="14" width="100" height="32" rx="6"/>
+    <rect class="rs-bl" x="24" y="16" width="92" height="2.5" rx="1.5"/>
+    <text class="at" x="70" y="32">Bootloader</text>
+
+    <rect class="ab" x="140" y="14" width="120" height="32" rx="6"/>
+    <rect class="rs-app" x="144" y="16" width="112" height="2.5" rx="1.5"/>
+    <text class="at" x="200" y="32">App (CM3)</text>
+
+    <rect class="ab" x="290" y="14" width="200" height="32" rx="6"/>
+    <rect class="rs-cb" x="294" y="16" width="192" height="2.5" rx="1.5"/>
+    <text class="at" x="390" y="32">_SEGGER_RTT @ 0x20000000</text>
+
+    <rect class="ab" x="520" y="14" width="140" height="32" rx="6"/>
+    <rect class="rs-sv" x="524" y="16" width="132" height="2.5" rx="1.5"/>
+    <text class="at" x="590" y="32">supervise (host)</text>
+
+    <rect class="ab" x="680" y="14" width="120" height="32" rx="6"/>
+    <rect class="rs-rs" x="684" y="16" width="112" height="2.5" rx="1.5"/>
+    <text class="at" x="740" y="32">run (host)</text>
+
+    <line class="ll" x1="70"  y1="50" x2="70"  y2="415"/>
+    <line class="ll" x1="200" y1="50" x2="200" y2="415"/>
+    <line class="ll" x1="390" y1="50" x2="390" y2="415"/>
+    <line class="ll" x1="590" y1="50" x2="590" y2="415"/>
+    <line class="ll" x1="740" y1="50" x2="740" y2="415"/>
+
+    <text class="mn" x="78" y="74">01</text>
+    <line class="ml" x1="70" y1="80" x2="387" y2="80" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="230" y="76">_DoInit (aUp[0] 세팅)</text>
+
+    <rect class="nb" x="510" y="98" width="160" height="22" rx="6"/>
+    <text class="nt" x="590" y="113">_last_cb_snapshot baseline</text>
+
+    <text class="mn" x="598" y="144">02</text>
+    <line class="ml" x1="590" y1="150" x2="393" y2="150" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="491" y="146">100 ms read → 변화 없음</text>
+
+    <text class="mn" x="78" y="178">03</text>
+    <line class="ml" x1="70" y1="184" x2="197" y2="184" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="135" y="180">jump</text>
+
+    <text class="mn" x="208" y="208">04</text>
+    <line class="ml" x1="200" y1="214" x2="387" y2="214" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="295" y="210">SEGGER_RTT_ConfigUpBuffer(1, ...)</text>
+
+    <text class="mn" x="208" y="238">05</text>
+    <line class="ml" x1="200" y1="244" x2="387" y2="244" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="295" y="240">aUp[1] 세팅 (0xB..)</text>
+
+    <text class="mn" x="598" y="268">06</text>
+    <line class="ml" x1="590" y1="274" x2="393" y2="274" marker-end="url(#arr-cb2)"/>
+    <text class="mt" x="491" y="270">다음 폴링 read</text>
+
+    <text class="mn" x="598" y="304">07</text>
+    <path class="mp" d="M 590 309 L 620 309 L 620 320 L 592 320" marker-end="url(#arr-cb2)"/>
+    <text class="mts" x="628" y="316">baseline != current → WARN + return</text>
+
+    <text class="mn" x="748" y="344">08</text>
+    <path class="mp" d="M 740 349 L 770 349 L 770 360 L 742 360" marker-end="url(#arr-cb2)"/>
+    <text class="mte" x="734" y="356">teardown + reconnect + _rtt_start</text>
+
+    <rect class="nb" x="650" y="386" width="160" height="22" rx="6"/>
+    <text class="nt" x="730" y="401">pylink 캐시 refresh</text>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 9</span>CB 변경 감지 (debugging detail) — baseline 불일치 시 run loop가 reconnect로 pylink 캐시 refresh</p>
 
   <p><strong><code>cb_search.mode=auto</code></strong>는 CB 주소를 모르므로 이 보강이 적용되지 않는다. Sound1 기본은 <code>fixed 0x20000000</code>이라 해당 없음.</p>
   <p><strong>관련 파일</strong>: <code>connector.py</code> <code>_snapshot_and_log_cb</code> / <code>_read_cb_snapshot</code> / <code>_parse_buffers</code> / <code>_format_cb_diff</code> / <code>_supervise</code>.</p>
