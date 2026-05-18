@@ -109,47 +109,155 @@
 └── docs/</code></pre>
 
   <h2 id="runtime">4. 런타임 아키텍처</h2>
-  <pre class="mermaid">
-flowchart LR
-    subgraph CLI
-      Args[argparse 인자]
-      Cfg[config.py<br/>YAML + override]
-    end
+  <svg viewBox="0 0 940 460" xmlns="http://www.w3.org/2000/svg" class="diag-svg" role="img" aria-labelledby="dr-t dr-d">
+    <title id="dr-t">런타임 아키텍처</title>
+    <desc id="dr-d">CLI argparse가 config.py를 거쳐 Core asyncio 이벤트 루프(JLinkConnector·Reader·Writer·OutQ·InQ·EventBus·Dispatcher)로 수렴. Sources(stdin·telnet) → InQ → Writer, Reader → OutQ → Dispatcher → Sinks(stdout·file·telnet). External Telnet TCP Server가 TelnetSource·TelnetSink와 양방향 점선 연결.</desc>
+    <defs>
+      <marker id="arr-d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+        <path d="M0,0 L9,4.5 L0,9 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <style>
+      .zone-bg { fill: var(--mantle); stroke: var(--surface2); stroke-width: 1; stroke-dasharray: 5 4; opacity: 0.55; }
+      .zs-cli { fill: var(--blue); }
+      .zs-src { fill: var(--peach); }
+      .zs-core { fill: var(--mauve); }
+      .zs-sinks { fill: var(--green); }
+      .zs-ext { fill: var(--teal); }
+      .zl-bg { fill: var(--base); stroke-width: 1; }
+      .zl-bg.cli { stroke: var(--blue); }
+      .zl-bg.src { stroke: var(--peach); }
+      .zl-bg.core { stroke: var(--mauve); }
+      .zl-bg.sinks { stroke: var(--green); }
+      .zl-bg.ext { stroke: var(--teal); }
+      .zl-t { font-family: "JetBrains Mono","Fira Code",monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-anchor: middle; }
+      .zl-t.cli { fill: var(--blue); }
+      .zl-t.src { fill: var(--peach); }
+      .zl-t.core { fill: var(--mauve); }
+      .zl-t.sinks { fill: var(--green); }
+      .zl-t.ext { fill: var(--teal); }
+      .n-rect { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
+      .n-cyl { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
+      .n-hex { fill: var(--surface0); stroke: var(--teal); stroke-width: 1.4; }
+      .n-t { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 10.5px; text-anchor: middle; font-weight: 500; }
+      .n-sub { fill: var(--subtext0); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 9px; text-anchor: middle; }
+      .e-l { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .e-s { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+      .el { fill: var(--subtext0); font-family: "JetBrains Mono",monospace; font-size: 9px; text-anchor: middle; }
+      .el-bg { fill: var(--mantle); }
+    </style>
 
-    subgraph Core["auto_rtt_viewer (asyncio 이벤트 루프)"]
-      Supervisor[connector.py<br/>JLinkConnector]
-      Reader[rtt_io.Reader]
-      Writer[rtt_io.Writer]
-      OutQ((출력 큐))
-      InQ((입력 큐))
-      Events[events.EventBus]
-      Dispatcher[pipeline.OutputDispatcher]
-    end
+    <!-- ZONE BACKGROUNDS -->
+    <rect class="zone-bg" x="14" y="28" width="206" height="182" rx="10"/>
+    <rect class="zs-cli" x="14" y="38" width="4" height="162" rx="2"/>
+    <rect class="zl-bg cli" x="28" y="18" width="40" height="18" rx="3"/>
+    <text class="zl-t cli" x="48" y="31">CLI</text>
 
-    subgraph Sinks
-      Stdout[StdoutSink]
-      File[FileSink]
-      TelnetS[TelnetSink]
-    end
+    <rect class="zone-bg" x="14" y="260" width="206" height="180" rx="10"/>
+    <rect class="zs-src" x="14" y="270" width="4" height="160" rx="2"/>
+    <rect class="zl-bg src" x="28" y="250" width="76" height="18" rx="3"/>
+    <text class="zl-t src" x="66" y="263">SOURCES</text>
 
-    subgraph Sources
-      StdinSrc[StdinSource]
-      TelnetSrc[TelnetSource]
-    end
+    <rect class="zone-bg" x="232" y="28" width="462" height="412" rx="10"/>
+    <rect class="zs-core" x="232" y="38" width="4" height="392" rx="2"/>
+    <rect class="zl-bg core" x="248" y="18" width="244" height="18" rx="3"/>
+    <text class="zl-t core" x="370" y="31">AUTO_RTT_VIEWER · ASYNCIO LOOP</text>
 
-    Telnet[telnet_server.py<br/>asyncio TCP Server]
+    <rect class="zone-bg" x="706" y="28" width="220" height="220" rx="10"/>
+    <rect class="zs-sinks" x="706" y="38" width="4" height="200" rx="2"/>
+    <rect class="zl-bg sinks" x="722" y="18" width="56" height="18" rx="3"/>
+    <text class="zl-t sinks" x="750" y="31">SINKS</text>
 
-    Args --> Cfg --> Supervisor
-    Supervisor -->|connect/rtt_start| Reader
-    Supervisor -->|connect/rtt_start| Writer
-    Reader --> OutQ
-    OutQ --> Dispatcher
-    Dispatcher --> Stdout & File & TelnetS
-    StdinSrc & TelnetSrc --> InQ --> Writer
-    Telnet --- TelnetS
-    Telnet --- TelnetSrc
-    Events --> OutQ
-  </pre>
+    <rect class="zone-bg" x="706" y="298" width="220" height="142" rx="10"/>
+    <rect class="zs-ext" x="706" y="308" width="4" height="122" rx="2"/>
+    <rect class="zl-bg ext" x="722" y="288" width="108" height="18" rx="3"/>
+    <text class="zl-t ext" x="776" y="301">EXTERNAL TCP</text>
+
+    <!-- CLI NODES -->
+    <rect class="n-rect" x="30" y="60" width="176" height="36" rx="6"/>
+    <text class="n-t" x="118" y="80">argparse 인자</text>
+    <rect class="n-rect" x="30" y="120" width="176" height="48" rx="6"/>
+    <text class="n-t" x="118" y="136">config.py</text>
+    <text class="n-sub" x="118" y="154">YAML + override</text>
+
+    <!-- SOURCES NODES -->
+    <rect class="n-rect" x="30" y="300" width="176" height="36" rx="6"/>
+    <text class="n-t" x="118" y="320">StdinSource</text>
+    <rect class="n-rect" x="30" y="360" width="176" height="36" rx="6"/>
+    <text class="n-t" x="118" y="380">TelnetSource</text>
+
+    <!-- CORE NODES -->
+    <rect class="n-rect" x="248" y="70" width="184" height="50" rx="6"/>
+    <text class="n-t" x="340" y="88">connector.py</text>
+    <text class="n-sub" x="340" y="106">JLinkConnector</text>
+
+    <rect class="n-rect" x="248" y="142" width="184" height="36" rx="6"/>
+    <text class="n-t" x="340" y="162">events.EventBus</text>
+
+    <rect class="n-rect" x="478" y="80" width="184" height="36" rx="6"/>
+    <text class="n-t" x="570" y="100">rtt_io.Reader</text>
+
+    <rect class="n-rect" x="478" y="148" width="184" height="36" rx="6"/>
+    <text class="n-t" x="570" y="168">rtt_io.Writer</text>
+
+    <!-- OutQ cylinder (cx=312, cy=240) -->
+    <path class="n-cyl" d="M 272 240 L 272 270 A 40 8 0 0 0 352 270 L 352 240 A 40 8 0 0 0 272 240 Z"/>
+    <ellipse class="n-cyl" cx="312" cy="240" rx="40" ry="8"/>
+    <text class="n-t" x="312" y="258">OutQ</text>
+
+    <!-- InQ cylinder (cx=412, cy=240) -->
+    <path class="n-cyl" d="M 372 240 L 372 270 A 40 8 0 0 0 452 270 L 452 240 A 40 8 0 0 0 372 240 Z"/>
+    <ellipse class="n-cyl" cx="412" cy="240" rx="40" ry="8"/>
+    <text class="n-t" x="412" y="258">InQ</text>
+
+    <!-- Dispatcher -->
+    <rect class="n-rect" x="478" y="320" width="184" height="50" rx="6"/>
+    <text class="n-t" x="570" y="336">pipeline</text>
+    <text class="n-sub" x="570" y="354">OutputDispatcher</text>
+
+    <!-- SINKS NODES -->
+    <rect class="n-rect" x="720" y="68" width="194" height="36" rx="6"/>
+    <text class="n-t" x="817" y="88">StdoutSink</text>
+    <rect class="n-rect" x="720" y="124" width="194" height="36" rx="6"/>
+    <text class="n-t" x="817" y="144">FileSink</text>
+    <rect class="n-rect" x="720" y="180" width="194" height="36" rx="6"/>
+    <text class="n-t" x="817" y="200">TelnetSink</text>
+
+    <!-- EXTERNAL Telnet hexagon -->
+    <polygon class="n-hex" points="730,365 762,330 880,330 910,365 880,400 762,400"/>
+    <text class="n-t" x="820" y="360">telnet_server.py</text>
+    <text class="n-sub" x="820" y="378">asyncio TCP Server</text>
+
+    <!-- EDGES (solid 1.5px lavender = data flow) -->
+    <line class="e-l" x1="118" y1="96" x2="118" y2="118" marker-end="url(#arr-d)"/>
+    <path class="e-l" d="M 206 144 C 230 144, 224 95, 248 95" marker-end="url(#arr-d)"/>
+
+    <line class="e-l" x1="432" y1="95" x2="476" y2="98" marker-end="url(#arr-d)"/>
+    <rect class="el-bg" x="430" y="80" width="52" height="11"/>
+    <text class="el" x="456" y="89">rtt_start</text>
+
+    <path class="e-l" d="M 432 105 C 458 105, 460 166, 476 166" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 570 116 C 570 180, 380 200, 340 232" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 340 178 C 340 198, 322 220, 320 232" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 350 264 C 400 280, 450 305, 478 328" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 662 330 C 700 330, 700 88, 718 88" marker-end="url(#arr-d)"/>
+    <path class="e-l" d="M 662 342 C 700 342, 700 144, 718 144" marker-end="url(#arr-d)"/>
+    <path class="e-l" d="M 662 354 C 700 354, 700 200, 718 200" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 206 318 C 320 318, 380 280, 412 248" marker-end="url(#arr-d)"/>
+    <path class="e-l" d="M 206 378 C 340 378, 400 290, 422 248" marker-end="url(#arr-d)"/>
+
+    <path class="e-l" d="M 432 232 C 442 210, 460 180, 478 168" marker-end="url(#arr-d)"/>
+
+    <!-- DASHED 1px sapphire = external bidirectional -->
+    <path class="e-s" d="M 850 330 C 880 280, 880 240, 850 218"/>
+    <path class="e-s" d="M 730 380 C 480 390, 280 395, 206 386"/>
+  </svg>
+  <p class="diag-caption"><span class="fig">Fig 4</span>auto_rtt_viewer 런타임 데이터 흐름 — CLI · Core · Sinks · Sources · External TCP 5 zone, 실선=내부 호출·점선=외부 양방향</p>
 
   <ul>
     <li><strong>하나의 asyncio 루프</strong>가 모든 태스크를 운영. pylink 동기 호출은 <code>asyncio.to_thread()</code>로 오프로드 — 이벤트 루프 블로킹 방지.</li>

@@ -71,9 +71,16 @@
     <style>
       .ab { fill: var(--surface0); stroke: var(--surface2); stroke-width: 1; }
       .at { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 11px; text-anchor: middle; dominant-baseline: middle; font-weight: 500; }
-      .ll { stroke: var(--surface2); stroke-dasharray: 3 5; stroke-width: 1; opacity: 0.45; }
-      .ml { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.4; fill: none; }
-      .ms { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1.4; stroke-dasharray: 5 3; fill: none; }
+      /* Role accent stripe (actor 상단 색띠 — Cloudflare/Stripe 패턴) */
+      .rs-peach { fill: var(--peach); }
+      .rs-mauve { fill: var(--mauve); }
+      .rs-lavender { fill: var(--lavender); }
+      .rs-teal { fill: var(--teal); }
+      .rs-green { fill: var(--green); }
+      .ll { stroke: var(--surface2); stroke-dasharray: 4 4; stroke-width: 1; opacity: 0.5; }
+      /* 요청 1.5px 실선 = 동기 호출, 응답 1px 점선 = 비동기 스트림 */
+      .ml { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
+      .ms { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1; stroke-dasharray: 5 3; fill: none; }
       .mp { stroke: var(--peach); color: var(--peach); stroke-width: 1.4; fill: none; }
       .mt { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; text-anchor: middle; }
       .mts { fill: var(--text); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; text-anchor: start; }
@@ -85,17 +92,26 @@
       .nt { fill: var(--peach); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 11px; font-style: italic; text-anchor: middle; }
     </style>
 
-    <!-- Actor headers -->
+    <!-- Actor headers with role accent stripe (역할별 색 인코딩) -->
     <rect class="ab" x="20" y="14" width="80" height="32" rx="6"/>
-    <text class="at" x="60" y="30">사용자</text>
+    <rect class="rs-peach" x="24" y="16" width="72" height="2.5" rx="1.5"/>
+    <text class="at" x="60" y="32">사용자</text>
+
     <rect class="ab" x="150" y="14" width="140" height="32" rx="6"/>
-    <text class="at" x="220" y="30">auto-rtt-viewer</text>
+    <rect class="rs-mauve" x="154" y="16" width="132" height="2.5" rx="1.5"/>
+    <text class="at" x="220" y="32">auto-rtt-viewer</text>
+
     <rect class="ab" x="330" y="14" width="100" height="32" rx="6"/>
-    <text class="at" x="380" y="30">J-Link</text>
+    <rect class="rs-lavender" x="334" y="16" width="92" height="2.5" rx="1.5"/>
+    <text class="at" x="380" y="32">J-Link</text>
+
     <rect class="ab" x="470" y="14" width="100" height="32" rx="6"/>
-    <text class="at" x="520" y="30">타겟 보드</text>
+    <rect class="rs-teal" x="474" y="16" width="92" height="2.5" rx="1.5"/>
+    <text class="at" x="520" y="32">타겟 보드</text>
+
     <rect class="ab" x="600" y="14" width="200" height="32" rx="6"/>
-    <text class="at" x="700" y="30">TeraTerm / VSCode 터미널</text>
+    <rect class="rs-green" x="604" y="16" width="192" height="2.5" rx="1.5"/>
+    <text class="at" x="700" y="32">TeraTerm / VSCode 터미널</text>
 
     <!-- Lifelines -->
     <line class="ll" x1="60"  y1="50" x2="60"  y2="755"/>
@@ -212,6 +228,7 @@
     <line class="ms" x1="220" y1="736" x2="61"  y2="736" marker-end="url(#ah)"/>
     <text class="mt" x="140" y="732">종료 (자원 정리 완료)</text>
   </svg>
+  <p class="diag-caption"><span class="fig">Fig 1</span>auto-rtt-viewer 표준 사용 시나리오 — 실행·재연결·양방향 입력·종료 18 step (alt 2종 + 외부 트리거 2개), 실선=동기 호출·점선=응답 스트림·사각 루프=self-call</p>
 
   <h2 id="who">누가 쓰는가</h2>
   <p>도구는 다음 작업을 자주 반복하는 임베디드 개발자를 1차 사용자로 가정합니다.</p>
