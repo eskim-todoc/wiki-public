@@ -141,8 +141,8 @@
       .n-hex { fill: var(--surface0); stroke: var(--teal); stroke-width: 1.4; }
       .n-t { fill: var(--text); font-family: "JetBrains Mono","D2Coding",monospace; font-size: 10.5px; text-anchor: middle; font-weight: 500; }
       .n-sub { fill: var(--subtext0); font-family: "Pretendard","Noto Sans KR",sans-serif; font-size: 9px; text-anchor: middle; }
-      .e-l { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; }
-      .e-s { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1; stroke-dasharray: 4 3; fill: none; }
+      .e-l { stroke: var(--lavender); color: var(--lavender); stroke-width: 1.5; fill: none; stroke-linejoin: round; stroke-linecap: round; }
+      .e-s { stroke: var(--sapphire); color: var(--sapphire); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; stroke-linejoin: round; stroke-linecap: round; }
       .el { fill: var(--subtext0); font-family: "JetBrains Mono",monospace; font-size: 9px; text-anchor: middle; }
       .el-bg { fill: var(--mantle); }
     </style>
@@ -228,34 +228,54 @@
     <text class="n-t" x="820" y="360">telnet_server.py</text>
     <text class="n-sub" x="820" y="378">asyncio TCP Server</text>
 
-    <!-- EDGES (solid 1.5px lavender = data flow) -->
-    <line class="e-l" x1="118" y1="96" x2="118" y2="118" marker-end="url(#arr-d)"/>
-    <path class="e-l" d="M 206 144 C 230 144, 224 95, 248 95" marker-end="url(#arr-d)"/>
+    <!-- EDGES (orthogonal L-shape, 1.5px lavender = 내부 동기 흐름) -->
 
-    <line class="e-l" x1="432" y1="95" x2="476" y2="98" marker-end="url(#arr-d)"/>
-    <rect class="el-bg" x="430" y="80" width="52" height="11"/>
-    <text class="el" x="456" y="89">rtt_start</text>
+    <!-- 01: Args → Cfg (수직 직선) -->
+    <line class="e-l" x1="118" y1="96" x2="118" y2="116" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 432 105 C 458 105, 460 166, 476 166" marker-end="url(#arr-d)"/>
+    <!-- 02: Cfg → Supervisor (우 → 상 → 우) -->
+    <path class="e-l" d="M 206 144 L 230 144 L 230 95 L 246 95" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 570 116 C 570 180, 380 200, 340 232" marker-end="url(#arr-d)"/>
+    <!-- 03: Supervisor → Reader (수평 라벨 rtt_start) -->
+    <line class="e-l" x1="432" y1="98" x2="476" y2="98" marker-end="url(#arr-d)"/>
+    <rect class="el-bg" x="438" y="84" width="40" height="11"/>
+    <text class="el" x="458" y="93">rtt_start</text>
 
-    <path class="e-l" d="M 340 178 C 340 198, 322 220, 320 232" marker-end="url(#arr-d)"/>
+    <!-- 04: Supervisor → Writer (Writer 좌측 위로) -->
+    <path class="e-l" d="M 432 108 L 458 108 L 458 156 L 476 156" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 350 264 C 400 280, 450 305, 478 328" marker-end="url(#arr-d)"/>
+    <!-- 05: Reader → OutQ (하 → 좌 → 하, OutQ 위로) -->
+    <path class="e-l" d="M 568 116 L 568 200 L 312 200 L 312 230" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 662 330 C 700 330, 700 88, 718 88" marker-end="url(#arr-d)"/>
-    <path class="e-l" d="M 662 342 C 700 342, 700 144, 718 144" marker-end="url(#arr-d)"/>
-    <path class="e-l" d="M 662 354 C 700 354, 700 200, 718 200" marker-end="url(#arr-d)"/>
+    <!-- 06: Events → OutQ (하 → 좌, OutQ 좌측으로) -->
+    <path class="e-l" d="M 340 178 L 340 240 L 274 240" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 206 318 C 320 318, 380 280, 412 248" marker-end="url(#arr-d)"/>
-    <path class="e-l" d="M 206 378 C 340 378, 400 290, 422 248" marker-end="url(#arr-d)"/>
+    <!-- 07: OutQ → Dispatcher (하 → 우 → 하) -->
+    <path class="e-l" d="M 312 278 L 312 305 L 478 305 L 478 318" marker-end="url(#arr-d)"/>
 
-    <path class="e-l" d="M 432 232 C 442 210, 460 180, 478 168" marker-end="url(#arr-d)"/>
+    <!-- 08: Dispatcher → Stdout (우 → 상 → 우) -->
+    <path class="e-l" d="M 662 330 L 690 330 L 690 86 L 718 86" marker-end="url(#arr-d)"/>
 
-    <!-- DASHED 1px sapphire = external bidirectional -->
-    <path class="e-s" d="M 850 330 C 880 280, 880 240, 850 218"/>
-    <path class="e-s" d="M 730 380 C 480 390, 280 395, 206 386"/>
+    <!-- 09: Dispatcher → File -->
+    <path class="e-l" d="M 662 340 L 700 340 L 700 142 L 718 142" marker-end="url(#arr-d)"/>
+
+    <!-- 10: Dispatcher → TelnetSink -->
+    <path class="e-l" d="M 662 350 L 710 350 L 710 198 L 718 198" marker-end="url(#arr-d)"/>
+
+    <!-- 11: StdinSrc → InQ (우 → 상, InQ 좌측으로) -->
+    <path class="e-l" d="M 206 318 L 350 318 L 350 240 L 370 240" marker-end="url(#arr-d)"/>
+
+    <!-- 12: TelnetSrc → InQ (우 → 상, InQ 아래로) -->
+    <path class="e-l" d="M 206 378 L 412 378 L 412 280" marker-end="url(#arr-d)"/>
+
+    <!-- 13: InQ → Writer (상 → 우, Writer 좌측 아래로) -->
+    <path class="e-l" d="M 412 232 L 412 178 L 476 178" marker-end="url(#arr-d)"/>
+
+    <!-- 14: External Telnet ⇄ TelnetSink (점선 양방향, 우측 경로) -->
+    <path class="e-s" d="M 820 330 L 820 250 L 914 250 L 914 218"/>
+
+    <!-- 15: External Telnet ⇄ TelnetSrc (점선 양방향, 좌측 긴 경로) -->
+    <path class="e-s" d="M 730 365 L 220 365 L 220 378"/>
   </svg>
   <p class="diag-caption"><span class="fig">Fig 4</span>auto_rtt_viewer 런타임 데이터 흐름 — CLI · Core · Sinks · Sources · External TCP 5 zone, 실선=내부 호출·점선=외부 양방향</p>
 
