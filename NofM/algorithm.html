@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>알고리즘 — NofM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>NofM</div>
+  <div class="brand-sub">N-of-M Stimulation Strategy</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Overview</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">알고리즘</div><ul>
+      <li><a href="algorithm.html">Peak Pick · Interleaving · Packet</a></li>
+      <li><a href="pcm-write.html">PCM Write + Phase 사이클</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">데이터</div><ul>
+      <li><a href="mapping.html">전극·밴드·채널 매핑</a></li>
+      <li><a href="tuning.html">튜닝 파라미터</a></li>
+    </ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">NofM</a> / 알고리즘</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>Peak Pick · Interleaving · Packet</h1>
+
+  <h2 id="peak-pick">1. Peak Pick — 32 → 16 선택 (Packed Score + Bitmask Sort)</h2>
+  <p>주파수 대역 32개 중 진폭 상위 16개를 선택. 진폭 동률 시 저주파 우선. <code>stimulationStrategy_NofM_Peak_Pick()</code>, <code>stimulationStrategy.c:116~232</code>.</p>
+
+  <h3>Step 1 — Packed Score 사전 계산</h3>
+  <pre><code>int packed_scores[df_MaxNumOfElectrode];   // 32 슬롯
+
+for (i = 0; i &lt; df_MaxNumOfElectrode; i++) {
+    packed_scores[i] = (g_pcm_amplitude_level[i] &lt;&lt; 5) | (31 - i);
+}</code></pre>
+  <p>각 전극의 진폭(8-bit)을 5비트 좌측 시프트 → 상위 비트, 하위 5비트에 <code>31 - i</code>(인덱스 뒤집어 저장).</p>
+
+  <div class="callout important">
+    <div class="callout-title">핵심 트릭</div>
+    진폭 동률 시 저주파(작은 <code>i</code>)가 더 큰 <code>31 - i</code>를 가져 packed score가 큼 → 정렬 시 저주파 우선.<br>
+    예: Low(idx 2, amp 10) = <code>(10&lt;&lt;5) | 29 = 349</code> &gt; High(idx 6, amp 10) = <code>(10&lt;&lt;5) | 25 = 345</code> → 고주파가 더 약한 peak로 평가됨.<br>
+    <strong>정렬 단계와 tiebreak가 한 번에 패킹</strong> — 별도 비교 로직 불필요.
+  </div>
+
+  <h3>Step 2 — 초기 버킷 채움 + 최소값 탐색</h3>
+  <pre><code>// 전극 0~15 packed score 그대로 버킷
+for (i = 0; i &lt; df_MaxNum_NofM; i++) {
+    top_packed[i] = packed_scores[i];
+}
+
+register int min_packed = top_packed[0];
+register int min_idx_in_bucket = 0;
+
+for (i = 1; i &lt; df_MaxNum_NofM; i++) {
+    if (top_packed[i] &lt; min_packed) {
+        min_packed = top_packed[i];
+        min_idx_in_bucket = i;
+    }
+}</code></pre>
+
+  <h3>Step 3 — Brute-force Bucket Swap (idx 16~31 스캔)</h3>
+  <pre><code>for (i = df_MaxNum_NofM; i &lt; df_MaxNumOfElectrode; i++) {   // 16..31
+    if (packed_scores[i] &gt; min_packed) {
+        top_packed[min_idx_in_bucket] = packed_scores[i];   // 약한 peak 교체
+
+        // 새 약한 peak 재탐색 (O(N))
+        min_packed = top_packed[0];
+        min_idx_in_bucket = 0;
+        for (t = 1; t &lt; df_MaxNum_NofM; t++) {
+            if (top_packed[t] &lt; min_packed) {
+                min_packed = top_packed[t];
+                min_idx_in_bucket = t;
+            }
+        }
+    }
+}</code></pre>
+  <p>워스트 케이스 시간 복잡도 O(M·N) = O(32·16) = <strong>512 비교</strong>. CFX 자극 사이클 (2 ms × Phase 0) 안에 충분.</p>
+
+  <h3>Step 4 — Bitmask Sort (Frequency 오름차순 자동 정렬)</h3>
+  <pre><code>register unsigned long present_mask = 0;
+
+// 하위 5비트 (&amp; 0x1F) 마스킹으로 원본 인덱스 복원 → 비트 set
+for (i = 0; i &lt; df_MaxNum_NofM; i++) {
+    register int original_idx = 31 - (top_packed[i] &amp; 0x1F);
+    present_mask |= (1UL &lt;&lt; original_idx);
+}
+
+// 비트마스크를 0..31 순회하며 set 비트만 추출
+register int presentOut = 0;
+for (b = 0; b &lt; df_MaxNumOfElectrode; b++) {
+    if (present_mask &amp; (1UL &lt;&lt; b)) {
+        g_NofM_adjacent_BandIndex[presentOut++] = b;
+    }
+}</code></pre>
+
+  <div class="callout tip">
+    <div class="callout-title">왜 비트마스크</div>
+    16개 정렬을 O(N²) 비교 정렬 없이 O(M)=O(32) 비트 스캔으로 처리. 동시에 sparse → dense 변환 (32 전극 중 16 선택의 dense 인덱스 추출). 원본 알고리즘의 <code>int present[32]</code> 배열 대비 RAM <strong>32× 절약</strong>.
+  </div>
+
+  <p><strong>출력</strong>: <code>g_NofM_adjacent_BandIndex[0..15]</code> = 에너지 상위 16 대역의 인덱스, 주파수 오름차순 정렬.</p>
+
+  <hr>
+
+  <h2 id="interleaving">2. Interleaving — ID-Sorted Stride 공간 분산</h2>
+  <p>정렬된 <code>adjacent_BandIndex[0..15]</code>를 절반 분할(<code>[0..7]</code>, <code>[8..15]</code>) 후 짝/홀 인덱스에 교차 배치. <code>stimulationStrategy_NofM_Interleaving()</code>, <code>stimulationStrategy.c:234~269</code>.</p>
+
+  <pre><code>void stimulationStrategy_NofM_Interleaving(void) {
+    int half_ch = df_MaxNum_NofM / 2;    // 8
+
+    for (i = 0; i &lt; half_ch; i++) {
+        g_NofM_notAdjacent_BandIndex[i * 2]     = g_NofM_adjacent_BandIndex[i];
+        g_NofM_notAdjacent_BandIndex[i * 2 + 1] = g_NofM_adjacent_BandIndex[i + half_ch];
+    }
+
+    if (df_MaxNum_NofM % 2 != 0) {    // 16 → false (홀수 N 대비)
+        g_NofM_notAdjacent_BandIndex[df_MaxNum_NofM - 1] = g_NofM_adjacent_BandIndex[df_MaxNum_NofM - 1];
+    }
+}</code></pre>
+
+  <h3>매핑 결과</h3>
+  <table>
+    <thead><tr><th><code>i</code></th><th>짝수 idx (<code>i*2</code>)</th><th>값</th><th>홀수 idx (<code>i*2+1</code>)</th><th>값</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>0</td><td><code>adj[0]</code></td><td>1</td><td><code>adj[8]</code></td></tr>
+      <tr><td>1</td><td>2</td><td><code>adj[1]</code></td><td>3</td><td><code>adj[9]</code></td></tr>
+      <tr><td>2</td><td>4</td><td><code>adj[2]</code></td><td>5</td><td><code>adj[10]</code></td></tr>
+      <tr><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr>
+      <tr><td>7</td><td>14</td><td><code>adj[7]</code></td><td>15</td><td><code>adj[15]</code></td></tr>
+    </tbody>
+  </table>
+  <p>결과: <code>notAdjacent_BandIndex = [adj[0], adj[8], adj[1], adj[9], adj[2], adj[10], ..., adj[7], adj[15]]</code></p>
+
+  <div class="callout note">
+    <div class="callout-title">효과</div>
+    연속 자극되는 두 전극의 idx 차이가 약 8 (<code>half_ch</code>) → 전기적 crosstalk(인접 전극 간섭) 감소. 단순 순차 자극 <code>[0,1,2,...,15]</code> 대비 공간 간격 <strong>8배</strong>.
+  </div>
+
+  <hr>
+
+  <h2 id="packet">3. Packet — 거리 기반 시작점 + Loop Peeling + Mute</h2>
+  <p>16 PCM 자극 패킷 생성. 이전 프레임 last 자극 전극과 현재 시퀀스 first/last 거리 비교로 시작점 결정. <code>stimulationStrategy_NofM_Packet()</code>, <code>stimulationStrategy.c:271~346</code>.</p>
+
+  <h3>Step 1 — 시작점 결정 (first/last 2개만 비교, O(1))</h3>
+  <pre><code>int NofM_maxIndex   = df_MaxNum_NofM - 1;   // 15
+int first_electrode = g_NofM_notAdjacent_BandIndex[0];
+int last_electrode  = g_NofM_notAdjacent_BandIndex[NofM_maxIndex];
+int prev_last_stim  = g_NofM_LastStimulus_BandIndex;
+
+int dist_to_first = abs(first_electrode - prev_last_stim);
+int dist_to_last  = abs(last_electrode  - prev_last_stim);
+
+int start_idx = (dist_to_last &gt; dist_to_first) ? NofM_maxIndex : 0;</code></pre>
+
+  <div class="callout important">
+    <div class="callout-title">원본 알고리즘 대비 최적화</div>
+    원본은 16 슬롯 전부와 거리 비교 → bestIndex 탐색 (O(N)). 다니엘 구현은 <strong>first/last 2개만 비교 → O(1)</strong>. 정당화 근거: notAdjacent 정렬이 stride 패턴이라 first/last 만 후보로 유효 (intermediate은 항상 first/last보다 가깝거나 같음).
+  </div>
+
+  <h3>Step 2 — 다음 프레임용 LastStimulus 사전 업데이트</h3>
+  <pre><code>if (start_idx == 0) {
+    g_NofM_LastStimulus_BandIndex = last_electrode;             // forward → 마지막 = last
+} else {
+    g_NofM_LastStimulus_BandIndex = g_NofM_notAdjacent_BandIndex[df_MaxNum_NofM - 2];  // reverse → 마지막 = N-2
+}</code></pre>
+  <p><strong>왜 N-2 (reverse)</strong>: reverse 시퀀스는 <code>[N-1, 0, 1, 2, ..., N-2]</code> 순서로 자극 → 마지막 자극 슬롯이 <code>N-2</code>.</p>
+
+  <h3>Step 3 — Sequence Generation with Loop Peeling</h3>
+  <p>Loop Peeling = 첫(또는 끝) 반복 1회를 루프 밖으로 빼고 나머지를 단순 루프로 — modulo/조건 분기 제거 최적화.</p>
+  <pre><code>int pcmOut = 0;
+
+// Peeled: reverse 시퀀스의 첫 자극 (= N-1 슬롯) 단독 처리
+if (start_idx == NofM_maxIndex) {
+    freqBandOrder = g_NofM_notAdjacent_BandIndex[NofM_maxIndex];
+    electrodIndex = addr_MapProgramData_StimulusChannelAssignedElectrodIndex[freqBandOrder] - 1;
+    electrodeMap  = addr_electrodeMap[electrodIndex] &lt;&lt; electrodIndexPositionAtPCM_Mold;
+
+    if (mute_enabled &amp;&amp; g_pcm_amplitude_level[freqBandOrder] == 0) {
+        addr_stimulationTempBuff[pcmOut++] = ISD_registerAddr_forwardPath_check_Data;
+    } else {
+        stimulusLevel = g_pcm_amplitude_level[freqBandOrder] &lt;&lt; stimulationPositionAtPCM_Mold;
+        addr_stimulationTempBuff[pcmOut++] = (electrodeMap | stimulusLevel | g_pcm_stimulation_packet_header);
+    }
+}
+
+// 나머지: 0..(loop_end-1) 순차 처리
+int loop_end = (start_idx == NofM_maxIndex) ? NofM_maxIndex : df_MaxNum_NofM;
+
+for (pcmIdx = 0; pcmIdx &lt; loop_end; pcmIdx++) {
+    // (같은 패킷 생성 로직)
+}</code></pre>
+
+  <h3>PCM 패킷 비트 패킹</h3>
+  <table>
+    <thead><tr><th>필드</th><th>위치</th><th>의미</th></tr></thead>
+    <tbody>
+      <tr><td><code>electrodeMap</code></td><td>bit 10~14</td><td><code>addr_electrodeMap[logical]</code>의 물리 전극 (0~31)</td></tr>
+      <tr><td><code>stimulusLevel</code></td><td>bit 2~9</td><td>진폭 (0~255)</td></tr>
+      <tr><td><code>g_pcm_stimulation_packet_header</code></td><td>bit 15~19</td><td><code>pcm_Mold_Stimulation</code> 마스크 + first pulse phase</td></tr>
+    </tbody>
+  </table>
+  <p>최종 <code>addr_stimulationTempBuff[pcmOut++] = electrodeMap | stimulusLevel | header</code> 결합.</p>
+
+  <h3>Mute 처리 (T-level 미만 묵음)</h3>
+  <p><code>is_enabled_mute_stimulation_under_t_level == 1 &amp;&amp; g_pcm_amplitude_level == 0</code>이면 자극 패킷 대신 <strong>dummy "forward path check" 패킷</strong> (<code>ISD_registerAddr_forwardPath_check_Data = 0x50783</code>) 전송. CIS와 동일 정책.</p>
+
+  <h2 id="full-flow">전체 흐름</h2>
+  <pre class="mermaid">
+flowchart TD
+    START["stimulationStrategy_NofM 진입"] --> PHASE{g_NofM_Phase}
+    PHASE -->|0| P0_FFT["find_freq_rep_value()"]
+    P0_FFT --> P0_LOG["logarithmMapping()"]
+    P0_LOG --> P0_PK["NofM_Peak_Pick()<br/>① packed score<br/>② bucket fill+swap<br/>③ bitmask sort"]
+    P0_PK --> P0_IL["NofM_Interleaving()<br/>half_ch stride"]
+    P0_IL --> P0_PKT["NofM_Packet()<br/>① 거리 기반 시작점<br/>② loop peeling<br/>③ mute T-level 처리"]
+    P0_PKT --> P0_END["g_NofM_Phase = 1<br/>addr_transferred_index = 0"]
+    PHASE -->|1| P1_SKIP["신호처리 SKIP"]
+    P1_SKIP --> P1_END["g_NofM_Phase = 0"]
+    P0_END --> WRITE["NofM_PCM_Write()"]
+    P1_END --> WRITE
+    WRITE --> EXIT["함수 종료"]
+  </pre>
+
+  <nav class="page-nav">
+    <a class="prev" href="index.html"><span class="label">← 이전</span>홈</a>
+    <a class="next" href="pcm-write.html"><span class="label">다음 →</span>PCM Write + Phase</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>NofM 알고리즘 단축본</div>
+    <div>출처: <code>stimulationStrategy.c:116~346</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({
+      startOnLoad: false, theme: t, securityLevel: 'loose', fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT, fontSize: '14px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#585b70' : '#acb0be',
+        lineColor: theme === 'mocha' ? '#7f849c' : '#8c8fa1',
+        secondaryColor: theme === 'mocha' ? '#181825' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#11111b' : '#eff1f5',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: '#df8e1d'
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true, nodeSpacing: 60, rankSpacing: 70, padding: 16, curve: 'basis' }
+    });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

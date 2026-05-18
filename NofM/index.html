@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>NofM 알고리즘 — Sound1 신호처리</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Sound1 CFX의 N-of-M 자극 전략 구현 알고리즘 정리. 32 주파수 대역 중 에너지 상위 16개 선택 + 공간 분산 + 1ms 한도 내 strided FIFO 기록.">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>NofM</div>
+  <div class="brand-sub">N-of-M Stimulation Strategy</div>
+  <nav class="toc">
+    <div class="toc-group">
+      <div class="toc-label">Overview</div>
+      <ul><li><a href="index.html">홈</a></li></ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">알고리즘</div>
+      <ul>
+        <li><a href="algorithm.html">Peak Pick · Interleaving · Packet</a></li>
+        <li><a href="pcm-write.html">PCM Write + Phase 사이클</a></li>
+      </ul>
+    </div>
+    <div class="toc-group">
+      <div class="toc-label">데이터</div>
+      <ul>
+        <li><a href="mapping.html">전극·밴드·채널 매핑</a></li>
+        <li><a href="tuning.html">튜닝 파라미터</a></li>
+      </ul>
+    </div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><strong>NofM</strong></div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="kicker">N-of-M Stimulation Strategy</div>
+    <h1>NofM 알고리즘</h1>
+    <p class="lead">
+      Sound1 CFX의 <strong>N-of-M 자극 전략</strong> 구현 정리. 32 주파수 대역 중
+      에너지 상위 <strong>N(=16)개만 선택</strong>하여 자극 → 공간 분산 → 1 ms 한도 내
+      strided FIFO 기록. <code>stimulationStrategy.c</code> 의 6 신규 함수 중심.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="algorithm.html">알고리즘 보기</a>
+      <a class="btn" href="pcm-write.html">PCM Write</a>
+      <a class="btn" href="mapping.html">전극 매핑</a>
+      <a class="btn" href="tuning.html">튜닝</a>
+    </div>
+  </section>
+
+  <h2 id="essence">알고리즘 본질</h2>
+  <table>
+    <thead><tr><th>속성</th><th>CIS</th><th>NofM</th></tr></thead>
+    <tbody>
+      <tr><td>자극 채널 수</td><td>32 (전체 밴드)</td><td><strong>16 (상위 선택)</strong></td></tr>
+      <tr><td>자극 선택</td><td>모든 대역 자극</td><td>매 프레임 packed score 기반 Top-N</td></tr>
+      <tr><td>채널 간 정렬</td><td><code>CIS_FreqBandOrder[]</code> 미리 정의된 순서</td><td>매 프레임 packed score Top-N + interleaving</td></tr>
+      <tr><td>신호처리 주기</td><td>매 사이클</td><td><strong>2 사이클 1회 (Phase 0/1 격번)</strong></td></tr>
+      <tr><td>FIFO 작성</td><td>CIS 함수 내부 1ms 분기</td><td><code>PCM_Write</code> 단일 (NOP pre-fill + strided overwrite)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="core-ideas">핵심 아이디어 5종</h2>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-title">① Packed Score</div>
+      <div class="card-body">
+        진폭과 주파수 인덱스를 단일 32-bit 정수에 패킹:<br>
+        <code>score = (amp &lt;&lt; 5) | (31 - idx)</code><br>
+        동률 시 저주파(작은 idx) 우선.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">② Bitmask Sort</div>
+      <div class="card-body">
+        16 선택된 packed score의 하위 5비트(<code>&amp; 0x1F</code>)에서 원본 인덱스 복원 → 32-bit 비트마스크 set → 오름차순 순회로 자동 정렬.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">③ Stride Interleaving</div>
+      <div class="card-body">
+        정렬된 16 대역을 <code>half_ch = 8</code> 단위로 분할 후 <code>[A[0], A[8], A[1], A[9], ...]</code> 식 교차 → 인접 전극 연속 자극 회피.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">④ Loop Peeling</div>
+      <div class="card-body">
+        이전 프레임 last 자극 전극과 현재 시퀀스 first/last 절대거리 비교 → forward(0) / reverse(N-1) 시작점 선택. modulo 회피.
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">⑤ Strided Overwrite</div>
+      <div class="card-body">
+        FIFO 전체를 NOP으로 일괄 채우고 <code>stride = g_pcmFrameNum_per_channel</code> 간격으로 자극 패킷 덮어쓰기.
+      </div>
+    </div>
+  </div>
+
+  <h2 id="phase-cycle">2단계 Phase 사이클</h2>
+  <p><code>g_NofM_Phase</code> (0/1) 로 신호처리 부하 분산. <strong>Phase 0 = 풀 파이프라인</strong>, <strong>Phase 1 = 신호처리 생략 (전송 잔여만)</strong>.</p>
+  <pre class="mermaid">
+flowchart LR
+    A[Phase 0] -->|"신호처리 +<br/>패킷 생성"| B[Phase 1]
+    B -->|"신호처리 생략<br/>(전송만)"| A
+
+    subgraph PH0["Phase 0: 풀 파이프라인"]
+        FFT["find_freq_rep_value()"] --> LOG["logarithmMapping()"]
+        LOG --> PK["NofM_Peak_Pick()"]
+        PK --> IL["NofM_Interleaving()"]
+        IL --> PKT["NofM_Packet()"]
+        PKT --> RST["addr_transferred_index = 0"]
+    end
+
+    subgraph PH1["Phase 1: 전송 잔여"]
+        SKIP["신호처리 SKIP"]
+    end
+
+    PH0 --> PCM["PCM_Write() 매 사이클 호출"]
+    PH1 --> PCM
+  </pre>
+  <p>매 사이클 끝에 <code>stimulationStrategy_NofM_PCM_Write()</code>가 호출되어 FIFO 기록. Case B (펄스 N &gt; 1 ms 한도)일 때 <code>addr_transferred_index</code>가 보존되어 다음 사이클(Phase 1)에서 잔여 펄스 이어 전송.</p>
+
+  <h2 id="functions">6 신규 함수</h2>
+  <table>
+    <thead><tr><th>함수</th><th>역할</th><th>핵심</th></tr></thead>
+    <tbody>
+      <tr><td><code>stimulationStrategy_NofM()</code></td><td>마스터 — Phase 사이클</td><td>Phase 0 = 풀 파이프라인, Phase 1 = SKIP</td></tr>
+      <tr><td><code>NofM_Init_Buffers()</code></td><td>버퍼 -1 초기화</td><td><code>adjacent</code> / <code>notAdjacent</code> / <code>stimulationTempBuff</code></td></tr>
+      <tr><td><code>NofM_Peak_Pick()</code></td><td>32 → 16 선택</td><td>packed score + bucket swap + bitmask sort</td></tr>
+      <tr><td><code>NofM_Interleaving()</code></td><td>공간 분산</td><td><code>half_ch=8</code> stride interleave</td></tr>
+      <tr><td><code>NofM_Packet()</code></td><td>PCM 패킷 16개 생성</td><td>거리 기반 시작점 + loop peeling + mute T-level 처리</td></tr>
+      <tr><td><code>NofM_PCM_Write()</code></td><td>FIFO 기록 (매 사이클)</td><td>NOP pre-fill + strided overwrite + 1 ms 한도 Case A/B</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="globals">전역 변수 라이프사이클</h2>
+  <table>
+    <thead><tr><th>변수</th><th>작성자</th><th>소비자</th><th>라이프사이클</th></tr></thead>
+    <tbody>
+      <tr><td><code>g_NofM_Phase</code></td><td>NofM 마스터 (토글) / system_control (리셋)</td><td>NofM 마스터 (분기)</td><td>영구 (전역 상태)</td></tr>
+      <tr><td><code>g_NofM_adjacent_BandIndex[16]</code></td><td>Peak_Pick (16 idx 저장)</td><td>Interleaving (입력)</td><td>Phase 0 내부 (1 사이클)</td></tr>
+      <tr><td><code>g_NofM_notAdjacent_BandIndex[16]</code></td><td>Interleaving (interleaved 16 idx)</td><td>Packet (입력)</td><td>Phase 0 내부</td></tr>
+      <tr><td><code>g_NofM_LastStimulus_BandIndex</code></td><td>Packet (다음 프레임용 사전 업데이트)</td><td>Packet (다음 프레임 거리 계산)</td><td>영구 (프레임 간 연속)</td></tr>
+      <tr><td><code>addr_stimulationTempBuff[32]</code></td><td>Packet (16 슬롯 PCM 패킷) / Init_Buffers (-1)</td><td>PCM_Write (FIFO 입력)</td><td>Phase 0 → Phase 1 보존</td></tr>
+      <tr><td><code>addr_transferred_index</code></td><td>NofM 마스터 (Phase 0 진입 시 0) / PCM_Write (Case A 후 0, Case B 후 보존)</td><td>PCM_Write (FIFO 인덱스)</td><td>사이클 간 보존 (Case B 다중 사이클 전송)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="dispatch">통합 — main loop 결합</h2>
+  <pre class="mermaid">
+flowchart TD
+    A[main loop] --> B["pcmDataOut()"]
+    B --> C["stimulationStrategy() dispatch"]
+    C -->|CIS=1| D1["find_freq_rep + logmap + CIS()"]
+    C -->|NofM=2| D2["stimulationStrategy_NofM()"]
+    D2 -->|Phase 0| E0["find_freq + logmap<br/>Peak_Pick → Interleaving → Packet"]
+    D2 -->|Phase 1| E1["신호처리 SKIP"]
+    E0 --> F["PCM_Write()"]
+    E1 --> F
+    F --> G[FIFO 24 슬롯]
+    G --> H[ISD 자극 출력]
+  </pre>
+
+  <h2 id="map">문서 지도</h2>
+  <table>
+    <thead><tr><th>주제</th><th>문서</th><th>핵심 함수</th></tr></thead>
+    <tbody>
+      <tr><td>Peak 선택·공간 분산·패킷 생성</td><td><a href="algorithm.html">알고리즘</a></td><td><code>Peak_Pick</code> · <code>Interleaving</code> · <code>Packet</code></td></tr>
+      <tr><td>FIFO 기록·Phase 사이클</td><td><a href="pcm-write.html">PCM Write</a></td><td><code>PCM_Write</code></td></tr>
+      <tr><td>order → band → logical → physical 4축 변환</td><td><a href="mapping.html">전극·밴드 매핑</a></td><td><code>addr_electrodeMap[32]</code></td></tr>
+      <tr><td>프레임 3 고정·백텔·16ch 가용 조건</td><td><a href="tuning.html">튜닝</a></td><td><code>calculationStimulParaN_cfxShare</code></td></tr>
+    </tbody>
+  </table>
+
+  <nav class="page-nav">
+    <a class="prev" href="index.html"><span class="label">현재</span>홈</a>
+    <a class="next" href="algorithm.html"><span class="label">다음 →</span>알고리즘</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>NofM 알고리즘 단축본 · 2026-05-19</div>
+    <div>출처: <code>Sound1/src/1__cfx/signalProcessing/stimulationStrategy.c</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({
+      startOnLoad: false, theme: t, securityLevel: 'loose', fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT, fontSize: '14px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#585b70' : '#acb0be',
+        lineColor: theme === 'mocha' ? '#7f849c' : '#8c8fa1',
+        secondaryColor: theme === 'mocha' ? '#181825' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#11111b' : '#eff1f5',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: '#df8e1d'
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true, nodeSpacing: 60, rankSpacing: 70, padding: 16, curve: 'basis' }
+    });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

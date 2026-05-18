@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>전극·밴드·채널 매핑 — NofM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>NofM</div>
+  <div class="brand-sub">N-of-M Stimulation Strategy</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Overview</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">알고리즘</div><ul>
+      <li><a href="algorithm.html">Peak Pick · Interleaving · Packet</a></li>
+      <li><a href="pcm-write.html">PCM Write + Phase 사이클</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">데이터</div><ul>
+      <li><a href="mapping.html">전극·밴드·채널 매핑</a></li>
+      <li><a href="tuning.html">튜닝 파라미터</a></li>
+    </ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">NofM</a> / 전극·밴드 매핑</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>전극·밴드·채널 매핑</h1>
+
+  <h2 id="four-axes">4축 인덱스 공간</h2>
+  <p>NofM·CIS 자극 데이터는 <strong>4개의 독립 인덱스 공간</strong>을 거쳐 PCM 패킷이 된다. 각 변환마다 별도 룩업 테이블 필요.</p>
+
+  <pre class="mermaid">
+flowchart LR
+    ORDER["order<br/>∈ [0, N-1]<br/>자극 순번 (시간축)"]
+    BAND["band<br/>∈ [0, N-1]<br/>주파수 밴드"]
+    LOGI["logical<br/>∈ [0, 31]<br/>논리 전극 (ISD 레지스터 주소)"]
+    PHYS["physical<br/>∈ [0, 31]<br/>물리 전극 (PCB pad, 와우 내부 실제 배치)"]
+
+    ORDER -->|"CIS_FreqBandOrder[order] - 1<br/>또는 notAdjacent[order]"| BAND
+    BAND -->|"StimulusChannelAssignedElectrodIndex[band] - 1"| LOGI
+    LOGI -->|"addr_electrodeMap[logical]"| PHYS
+  </pre>
+
+  <table>
+    <thead><tr><th>축</th><th>의미</th><th>예시 값 (N=16)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>order</strong></td><td>시간축 — 언제 자극할지</td><td>0, 1, 2, ..., 15</td></tr>
+      <tr><td><strong>band</strong></td><td>주파수축 — 어떤 음향 대역</td><td>0=저주파 ... 15=고주파</td></tr>
+      <tr><td><strong>logical</strong></td><td>ISD 레지스터 주소 공간</td><td>맵에 1-based 저장 (1~32)</td></tr>
+      <tr><td><strong>physical</strong></td><td>와우 내부 실제 배치</td><td>0~31, 기저부↔첨단부</td></tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <h2 id="electrode-map">addr_electrodeMap[32] — Logical → Physical 룩업</h2>
+  <p><code>stimulationStrategy.c:14</code>에 하드코딩된 32 슬롯 배열.</p>
+
+  <pre><code>int _XMEM addr_electrodeMap[32] = {
+    31, 12, 11,  9,  7,  5,  3,  1,  0,  2,  4,  6,  8, 10, 13, 15,
+    17, 18, 20, 22, 24, 26, 28, 30, 14, 29, 27, 25, 23, 21, 19, 16,
+};</code></pre>
+
+  <p>의미: <strong>"논리 전극 인덱스 i번은 ISD 물리 전극 <code>addr_electrodeMap[i]</code>번에 자극을 내보낸다"</strong>.</p>
+
+  <table>
+    <thead><tr><th>logical (0-based)</th><th>physical (PCB)</th><th>위치</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>31</td><td>와우 기저부 (가장 큰 번호)</td></tr>
+      <tr><td>1</td><td>12</td><td>—</td></tr>
+      <tr><td>2</td><td>11</td><td>—</td></tr>
+      <tr><td>...</td><td>...</td><td>...</td></tr>
+      <tr><td>8</td><td>0</td><td>와우 첨단부 (가장 작은 번호)</td></tr>
+      <tr><td>9</td><td>2</td><td>—</td></tr>
+      <tr><td>...</td><td>...</td><td>...</td></tr>
+      <tr><td>31</td><td>16</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout important">
+    <div class="callout-title">왜 이렇게 생겼는가</div>
+    ISD 하드웨어의 전극 물리 배치(와우 기저↔첨단) 순서가 ISD 레지스터 주소 순서와 다르기 때문. 환자용 맵은 기저→첨단 자연 순서로 작성되고, CFX는 마지막 PCM 패킷 단계에서만 ISD 레지스터 주소 순서로 재배치.
+  </div>
+
+  <div class="callout warning">
+    <div class="callout-title">CFX·CM3 양쪽 중복</div>
+    동일 배열이 두 곳에 존재:
+    <ul>
+      <li>CFX: <code>src/1__cfx/signalProcessing/stimulationStrategy.c:14</code></li>
+      <li>CM3: <code>src/2__cm3/.../isd_interface_stimulationParaSetting.c</code> 의 <code>electrodeMap[]</code></li>
+    </ul>
+    두 곳 값이 엇갈리면 즉시 자극 좌표가 뒤바뀜. 누구든 한 쪽만 수정하면 환자에게 엉뚱한 전극이 자극됨. 단일 헤더로 추출하는 게 권장.
+  </div>
+
+  <hr>
+
+  <h2 id="pcm-packet">PCM 패킷 비트 배치</h2>
+
+  <pre><code>bit  19 18 17 16 15  14 13 12 11 10   9  8  7  6  5  4  3  2   1  0
+value  0  1  0  0  P   e4 e3 e2 e1 e0  a7 a6 a5 a4 a3 a2 a1 a0  0  0
+
+           │       │  │                 │                        │
+   Stimulation    P   electrodeMap[5]   amplitude[8]             pad
+   mold = 0x40000     = physical        = g_pcm_amplitude_level  (stimulationPositionAtPCM_Mold=2)
+                      (0..31)           (0..255)
+                      ↑ addr_electrodeMap 후의 physical
+                      (electrodIndexPositionAtPCM_Mold=10)
+           ↑ firstPulsePhase (0 또는 1)
+             (firstPulsePhasePositionAtPCM_Mold=15)</code></pre>
+
+  <h3>NofM Packet 단계 — 비트 패킹 구현</h3>
+  <pre><code>freqBandOrder = g_NofM_notAdjacent_BandIndex[pcmIdx];                                       // notAdjacent 순서대로 band
+electrodIndex = addr_MapProgramData_StimulusChannelAssignedElectrodIndex[freqBandOrder] - 1; // band → logical (0-based)
+electrodeMap  = addr_electrodeMap[electrodIndex] &lt;&lt; electrodIndexPositionAtPCM_Mold;          // logical → physical, bit 10 위치
+stimulusLevel = g_pcm_amplitude_level[freqBandOrder] &lt;&lt; stimulationPositionAtPCM_Mold;        // amp → bit 2 위치
+addr_stimulationTempBuff[pcmOut++] = electrodeMap | stimulusLevel | g_pcm_stimulation_packet_header;</code></pre>
+
+  <hr>
+
+  <h2 id="freq-mapping">주파수 밴드 → PCM 진폭 (3단계)</h2>
+
+  <pre class="mermaid">
+flowchart TD
+    MIC[마이크 입력] --> ADC[ADC]
+    ADC --> FFT["FFT (HW 가속)"]
+    FFT --> VMAG["vMag (HW 가속)<br/>256 bin × magnitude"]
+    VMAG --> S1["find_freq_rep_value()<br/>256 bin → 32 밴드 max"]
+    S1 --> AMP1["g_freq_rep_values_scaled[32]<br/>(>>4 게인 보정)"]
+    AMP1 --> S2["logarithmMapping()<br/>Q-format 산술<br/>T/C clamp"]
+    S2 --> AMP2["g_pcm_amplitude_level[32]<br/>0~255"]
+    AMP2 --> NOFM["NofM_Peak_Pick<br/>32 → 16 선택"]
+    NOFM --> PKT["NofM_Packet<br/>PCM 패킷 16개"]
+    PKT --> FIFO[FIFO 24 슬롯]
+    FIFO --> ISD[ISD 자극 출력]
+  </pre>
+
+  <h3>Step 1 — FFT bin → 밴드 대표값 (find_freq_rep_value)</h3>
+  <p><code>FrequencyAnalysis.c:45</code>. 256 bin 중 같은 그룹(<code>pass_bin_index[bin]</code>)에 속한 bin의 <strong>최대 magnitude</strong>를 그룹의 대표값으로.</p>
+  <pre><code>for (bin = 0; bin &lt; 256; bin++) {
+    group = g_pass_bin_index[bin];
+    mag   = VMAG_OUTPUT[bin];
+    if (group &gt;= 0) {
+        g_freq_rep_values[group] = max(prev, mag);
+    }
+}
+
+// 게인 보정 (FFT_SIZE/32 = 2^4)
+for (i = 0; i &lt; 32; i++) {
+    g_freq_rep_values_scaled[i] = g_freq_rep_values[i] &gt;&gt; 4;
+}</code></pre>
+
+  <h3>Step 2 — Greenwood 분할 + pass_bin_index</h3>
+  <p>0~8 kHz를 Greenwood 함수로 N 밴드로 비선형 분할. 저주파에 bin 많고 고주파는 듬성. <code>pass_bin_index[]</code>는 CM3가 맵 로드 시 FS 메모리에 작성, CFX가 <code>read_FFT_PassBin_index()</code>로 복사.</p>
+
+  <h3>Step 3 — Logarithmic Mapping</h3>
+  <p><code>nonlinearMapping.c</code>의 <code>logarithmMapping()</code>. T-level/C-level/xMin/xMax 기준으로 진폭(0~255)으로 매핑. Q16.8 산술 + branchless clamp.</p>
+
+  <hr>
+
+  <h2 id="example">예시 — N=16 환자 맵</h2>
+  <p>16 밴드 환자 맵에서 NofM order 0 자극 패킷 생성 흐름.</p>
+
+  <table>
+    <thead><tr><th>단계</th><th>참조 테이블</th><th>값</th></tr></thead>
+    <tbody>
+      <tr><td><strong>(0)</strong> Peak_Pick 결과</td><td><code>g_NofM_adjacent_BandIndex[0..15]</code></td><td>[1, 3, 5, 7, 8, 10, 12, 14, 0, 2, 4, 6, 9, 11, 13, 15] (정렬됨)</td></tr>
+      <tr><td><strong>(1)</strong> Interleaving 결과</td><td><code>g_NofM_notAdjacent_BandIndex[0..15]</code></td><td>[adj[0], adj[8], adj[1], adj[9], ...] = [1, 0, 3, 2, 5, 4, ...]</td></tr>
+      <tr><td><strong>(2)</strong> order 0의 band</td><td><code>notAdjacent[0]</code></td><td>1 (저주파)</td></tr>
+      <tr><td><strong>(3)</strong> band → logical</td><td><code>StimulusChannelAssignedElectrodIndex[1] - 1</code></td><td>4 - 1 = 3</td></tr>
+      <tr><td><strong>(4)</strong> logical → physical</td><td><code>addr_electrodeMap[3]</code></td><td>9</td></tr>
+      <tr><td><strong>(5)</strong> electrodeMap field</td><td><code>9 &lt;&lt; 10</code></td><td><code>0x2400</code></td></tr>
+      <tr><td><strong>(6)</strong> amplitude</td><td><code>g_pcm_amplitude_level[1]</code></td><td>165</td></tr>
+      <tr><td><strong>(7)</strong> stimulusLevel field</td><td><code>165 &lt;&lt; 2</code></td><td><code>0x294</code></td></tr>
+      <tr><td><strong>(8)</strong> 최종 PCM word</td><td><code>0x40000 | 0x2400 | 0x294</code></td><td><code>0x42694</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>→ PCM 패킷 <code>0x42694</code>는 <strong>"ISD 물리 전극 9번에 자극 레벨 165"</strong>를 의미.</p>
+
+  <nav class="page-nav">
+    <a class="prev" href="pcm-write.html"><span class="label">← 이전</span>PCM Write</a>
+    <a class="next" href="tuning.html"><span class="label">다음 →</span>튜닝 파라미터</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>NofM 알고리즘 단축본</div>
+    <div>출처: <code>stimulationStrategy.c:14 + FrequencyAnalysis.c + nonlinearMapping.c</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({
+      startOnLoad: false, theme: t, securityLevel: 'loose', fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT, fontSize: '14px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#585b70' : '#acb0be',
+        lineColor: theme === 'mocha' ? '#7f849c' : '#8c8fa1',
+        secondaryColor: theme === 'mocha' ? '#181825' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#11111b' : '#eff1f5',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: '#df8e1d'
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true, nodeSpacing: 60, rankSpacing: 70, padding: 16, curve: 'basis' }
+    });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

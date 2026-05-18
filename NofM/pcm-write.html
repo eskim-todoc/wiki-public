@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>PCM Write + Phase 사이클 — NofM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>NofM</div>
+  <div class="brand-sub">N-of-M Stimulation Strategy</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Overview</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">알고리즘</div><ul>
+      <li><a href="algorithm.html">Peak Pick · Interleaving · Packet</a></li>
+      <li><a href="pcm-write.html">PCM Write + Phase 사이클</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">데이터</div><ul>
+      <li><a href="mapping.html">전극·밴드·채널 매핑</a></li>
+      <li><a href="tuning.html">튜닝 파라미터</a></li>
+    </ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">NofM</a> / PCM Write + Phase</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>PCM Write + Phase 사이클</h1>
+
+  <h2 id="master">1. 마스터 함수 — Phase 사이클 제어</h2>
+  <p><code>stimulationStrategy_NofM()</code>, <code>stimulationStrategy.c:66~95</code>. Phase 0 = 풀 파이프라인, Phase 1 = 신호처리 생략 (전송만).</p>
+
+  <pre><code>void stimulationStrategy_NofM(void)
+{
+    if (g_NofM_Phase == 0) {
+        /* Phase 0: 풀 파이프라인 */
+        find_freq_rep_value();                          // FFT vMag → 32 대역 magnitude
+        logarithmMapping();                             // log map + T/C clamp → g_pcm_amplitude_level[32]
+        stimulationStrategy_NofM_Peak_Pick();           // 32 중 16 선택 → g_NofM_adjacent_BandIndex
+        stimulationStrategy_NofM_Interleaving();        // 공간 분산 → g_NofM_notAdjacent_BandIndex
+        stimulationStrategy_NofM_Packet();              // PCM 패킷 16개 → addr_stimulationTempBuff
+
+        g_NofM_Phase = 1;
+        addr_transferred_index = 0;                     // 새 전송 사이클 시작
+    }
+    else {
+        /* Phase 1: 신호처리 생략, 잔여 펄스 전송만 */
+        g_NofM_Phase = 0;
+    }
+
+    stimulationStrategy_NofM_PCM_Write();               // FIFO 기록 (매 사이클)
+}</code></pre>
+
+  <div class="callout important">
+    <div class="callout-title">핵심 — PCM_Write 매 사이클 호출</div>
+    Phase 1에서도 FIFO 기록이 일어나야 잔여 자극이 끊김 없이 출력됨. 원본은 Phase0/Phase1 함수 각각에서 NOP 채움 + 명시적 8개 자극 매핑. 다니엘 구현은 <code>PCM_Write</code>로 통합.
+  </div>
+
+  <hr>
+
+  <h2 id="pcm-write">2. PCM Write — NOP Pre-fill + Strided Overwrite + 1 ms 한도</h2>
+  <p><code>stimulationStrategy_NofM_PCM_Write()</code>, <code>stimulationStrategy.c:348~408</code>.</p>
+
+  <pre><code>void stimulationStrategy_NofM_PCM_Write(void)
+{
+    int _XMEM *p_pcmFIFO = (int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING;
+    int stride = g_pcmFrameNum_per_channel;     // 1 자극당 PCM 프레임 수 (CM3가 펄스폭 기반 계산)
+
+    /* FAST PRE-FILL: 전체 버퍼 NOP으로 채움 */
+    for (i = 0; i &lt; df_MaxNumTransferableChannel; i++) {   // 24 회
+        *p_pcmFIFO-- = pcm_Mold_NopStandby;
+    }
+
+    /* STRIDED OVERWRITE: stride 간격으로 자극 패킷 덮어쓰기 */
+    int _XMEM *pulse_ptr = (int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING;
+
+    if (df_MaxNum_NofM &lt; g_transferableChannelNum_per_1msec) {
+        /* Case A: N(=16) &lt; 1ms 한도 → 16 펄스 모두 기록 후 인덱스 리셋 */
+        for (i = 0; i &lt; df_MaxNum_NofM; i++) {
+            *pulse_ptr = addr_stimulationTempBuff[addr_transferred_index];
+            pulse_ptr -= stride;
+            addr_transferred_index++;
+        }
+        addr_transferred_index = 0;
+    }
+    else {
+        /* Case B: N(=16) &gt;= 한도 → 한도까지만 기록, 인덱스 유지 + N 도달 시 wrap */
+        for (i = 0; i &lt; g_transferableChannelNum_per_1msec; i++) {
+            *pulse_ptr = addr_stimulationTempBuff[addr_transferred_index];
+            pulse_ptr -= stride;
+            addr_transferred_index++;
+            if (addr_transferred_index &gt;= df_MaxNum_NofM) {
+                addr_transferred_index = 0;
+            }
+        }
+    }
+}</code></pre>
+
+  <h3>FIFO 모델</h3>
+  <p><code>HEAR_ADDR_FIFO_PCM_WRITING</code>은 PCM 자극 FIFO의 head. 포인터를 <strong>감소</strong> 방향(<code>p_pcmFIFO--</code>)으로 쓴다 — 하드웨어가 디크리먼트 주소 모드로 읽는 구조.</p>
+
+  <h3>Step 1 — NOP Pre-fill (FAST)</h3>
+  <p>FIFO의 24 슬롯(<code>df_MaxNumTransferableChannel</code>) 전부에 <code>pcm_Mold_NopStandby</code> 기록. 자극이 없는 슬롯은 NOP으로 자동 유지.</p>
+
+  <h3>Step 2 — Strided Overwrite</h3>
+  <p>NOP 위에 자극 패킷을 <code>stride</code>(<code>g_pcmFrameNum_per_channel</code>) 간격으로 덮어씀. stride 의미 — 한 자극 채널당 PCM 프레임 수 (CM3가 펄스폭 기반 계산).</p>
+  <p>예: stride = 3이면 0, -3, -6, -9, ... 위치에 자극.</p>
+
+  <hr>
+
+  <h2 id="case-ab">3. Case A vs Case B — 1 ms 한도 분기</h2>
+
+  <pre class="mermaid">
+flowchart TD
+    START["PCM_Write 진입"] --> NOP["NOP Pre-fill<br/>24 슬롯 모두 pcm_Mold_NopStandby"]
+    NOP --> COND{"df_MaxNum_NofM (16)<br/>&lt;<br/>g_transferableChannelNum_per_1msec ?"}
+    COND -->|Yes| A["Case A: 16 펄스 모두 한 사이클에 기록"]
+    A --> A1["pulse_ptr -= stride 로 16회 덮어쓰기"]
+    A1 --> A2["addr_transferred_index = 0 리셋"]
+    COND -->|No| B["Case B: 한도까지만 기록 + 인덱스 유지"]
+    B --> B1["한도 횟수만 덮어쓰기"]
+    B1 --> B2["addr_transferred_index 보존<br/>(다음 사이클 이어 전송)"]
+    B2 --> B3{"addr_transferred_index &gt;= 16 ?"}
+    B3 -->|Yes| B4["wrap → 0"]
+    B3 -->|No| END1["종료"]
+    A2 --> END1
+    B4 --> END1
+  </pre>
+
+  <h3>Case A (16 &lt; 한도)</h3>
+  <p>16 자극 모두 한 사이클(1 ms)에 기록 가능. 모두 기록 후 <code>addr_transferred_index = 0</code> 리셋.</p>
+
+  <h3>Case B (16 &gt;= 한도)</h3>
+  <p>1 ms 한도 내에 다 못 보냄. 한도(<code>g_transferableChannelNum_per_1msec</code>, 예: 24)만큼만 기록, <code>addr_transferred_index</code> 보존하여 다음 Phase 1 사이클에서 잔여 펄스 이어 전송 (<code>addr_transferred_index &gt;= 16</code>이면 0으로 wrap).</p>
+
+  <hr>
+
+  <h2 id="phase-1-detail">4. Phase 1 PCM Write 동작</h2>
+  <p>마스터 함수가 Phase 1일 때 <code>PCM_Write</code>만 호출. 그러나 Phase 1의 PCM_Write는 <strong>이전 Phase 0에서 채워진 <code>addr_stimulationTempBuff[0..15]</code>를 재참조</strong> → 동일 자극 시퀀스를 한 번 더 전송하는 게 아니라:</p>
+  <ul>
+    <li><strong>Case A였다면</strong>: 인덱스가 0이라 처음부터 다시</li>
+    <li><strong>Case B였다면</strong>: 보존된 인덱스에서 이어서</li>
+  </ul>
+  <p>결국 다중 프레임 분산 전송으로 1 ms 한도 회피.</p>
+
+  <hr>
+
+  <h2 id="original-comparison">5. 원본 알고리즘 (`nOFm`) 대비</h2>
+  <table>
+    <thead><tr><th>측면</th><th>원본</th><th>다니엘 구현</th></tr></thead>
+    <tbody>
+      <tr><td>Phase 분리</td><td><code>_Phase0()</code> / <code>_Phase1()</code> 두 함수 각각에서 NOP 채움 + 명시적 8개 자극 매핑</td><td>통합 <code>PCM_Write</code> — Phase 1 에서도 동일 함수 호출</td></tr>
+      <tr><td>stride</td><td>3 (8 자극 × 3 프레임 = 24 슬롯) 하드코딩 + 8 + 8 분할 명시</td><td><code>stride = g_pcmFrameNum_per_channel</code> 변수화 — CM3가 펄스폭 기반 계산</td></tr>
+      <tr><td>매핑 방식</td><td><code>*(p_pcmFIFO - 0)</code>, <code>-3</code>, <code>-6</code>, ..., <code>-21</code> 명시적 8 슬롯</td><td>Case A/B 분기 + 1 ms 한도 일반화</td></tr>
+      <tr><td>N 가변성</td><td>16 + stride 3 + 1 ms 24 슬롯 가정 고정</td><td>임의의 N·stride·한도 조합 일반화</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="globals-pcm">전역 변수 (PCM Write 관련)</h2>
+  <table>
+    <thead><tr><th>변수</th><th>크기·타입</th><th>의미</th><th>설정 주체</th></tr></thead>
+    <tbody>
+      <tr><td><code>g_pcmFrameNum_per_channel</code></td><td><code>int</code></td><td>한 자극당 PCM 프레임 수 (stride)</td><td>CM3 공유메모리 (펄스폭 기반)</td></tr>
+      <tr><td><code>g_transferableChannelNum_per_1msec</code></td><td><code>int</code></td><td>1 ms 안에 전송 가능한 자극 수</td><td>CM3 계산값 수신</td></tr>
+      <tr><td><code>df_MaxNumTransferableChannel</code></td><td><code>24</code></td><td>PCM 프레임 word 수 (1 ms 슬롯 수)</td><td>상수</td></tr>
+      <tr><td><code>df_MaxNum_NofM</code></td><td><code>16</code></td><td>NofM 선택 밴드 수</td><td>상수 (<code>definitionsForAlgorithm.h</code>)</td></tr>
+      <tr><td><code>addr_transferred_index</code></td><td><code>int</code></td><td>다음에 보낼 자극 슬롯 위치 (Case B 라운드 로빈)</td><td>PCM_Write (Case A 후 0, Case B 후 보존)</td></tr>
+      <tr><td><code>addr_stimulationTempBuff[32]</code></td><td><code>int</code></td><td>16 PCM 패킷 + 미사용 16 (-1)</td><td>Packet (Phase 0)</td></tr>
+    </tbody>
+  </table>
+
+  <nav class="page-nav">
+    <a class="prev" href="algorithm.html"><span class="label">← 이전</span>알고리즘</a>
+    <a class="next" href="mapping.html"><span class="label">다음 →</span>전극·밴드 매핑</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>NofM 알고리즘 단축본</div>
+    <div>출처: <code>stimulationStrategy.c:66~95 + 348~408</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({
+      startOnLoad: false, theme: t, securityLevel: 'loose', fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT, fontSize: '14px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#585b70' : '#acb0be',
+        lineColor: theme === 'mocha' ? '#7f849c' : '#8c8fa1',
+        secondaryColor: theme === 'mocha' ? '#181825' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#11111b' : '#eff1f5',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: '#df8e1d'
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true, nodeSpacing: 60, rankSpacing: 70, padding: 16, curve: 'basis' }
+    });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>

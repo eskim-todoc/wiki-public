@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>튜닝 파라미터 — NofM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/script.js"></script>
+</head>
+<body>
+<div class="layout">
+
+<aside class="sidebar">
+  <div class="brand"><span class="dot"></span>NofM</div>
+  <div class="brand-sub">N-of-M Stimulation Strategy</div>
+  <nav class="toc">
+    <div class="toc-group"><div class="toc-label">Overview</div><ul><li><a href="index.html">홈</a></li></ul></div>
+    <div class="toc-group"><div class="toc-label">알고리즘</div><ul>
+      <li><a href="algorithm.html">Peak Pick · Interleaving · Packet</a></li>
+      <li><a href="pcm-write.html">PCM Write + Phase 사이클</a></li>
+    </ul></div>
+    <div class="toc-group"><div class="toc-label">데이터</div><ul>
+      <li><a href="mapping.html">전극·밴드·채널 매핑</a></li>
+      <li><a href="tuning.html">튜닝 파라미터</a></li>
+    </ul></div>
+  </nav>
+</aside>
+
+<main class="content">
+  <header class="page-head">
+    <div class="crumbs"><a href="index.html">NofM</a> / 튜닝 파라미터</div>
+    <div>
+      <button class="menu-btn" aria-label="메뉴 열기">☰</button>
+      <button class="theme-toggle" data-next="mocha">Mocha 모드</button>
+    </div>
+  </header>
+
+  <h1>튜닝 파라미터</h1>
+  <p>NofM 본체 통합 이후 실 동작 검증 중 적용한 5 변경. 영구 3건 + 임시 2건.</p>
+
+  <h2 id="overview">변경 요약</h2>
+  <table>
+    <thead><tr><th>#</th><th>위치</th><th>분류</th><th>변경</th></tr></thead>
+    <tbody>
+      <tr><td>①</td><td>CFX <code>driver_PCM_liveStimulation.c</code></td><td><span class="badge done">영구</span></td><td>connectionCheck 직후 NopStandby → <strong>NopBacktel</strong> 강제 (2 슬롯)</td></tr>
+      <tr><td>②</td><td>CFX <code>stimulationStrategy.c</code></td><td><span class="badge done">영구</span></td><td>NofM stride 정책 명시 (<code>g_pcmFrameNum_per_channel</code> 사용, backup 가지 보존)</td></tr>
+      <tr><td>③</td><td>CFX <code>stimulationStrategy.c</code></td><td><span class="badge partial">임시</span></td><td>NofM 진입 직후 amplitude 16 인덱스 결정론적 벡터 강제 (검증용)</td></tr>
+      <tr><td>④</td><td>CM3 <code>ci_map.c</code></td><td><span class="badge partial">임시</span></td><td>Map3 (CI_MAP_NUM_3_INDEX) <code>stimulationStrategy = nOFm</code> 강제</td></tr>
+      <tr><td>⑤</td><td>CM3 <code>stimulationParaCal.c</code></td><td><span class="badge done">영구</span></td><td>NofM 가용 조건 가드 (numFrequencyBand ≥ 16) + <code>frameNumPerOneChannel=3</code> 강제</td></tr>
+    </tbody>
+  </table>
+
+  <hr>
+
+  <h2 id="change-1">① 백텔 강제 (frame_3_perChannel)</h2>
+  <p><code>src/1__cfx/internalDevice/driver_PCM_liveStimulation.c</code>, L154~165 부근.</p>
+
+  <pre><code>+   /* IMPORTANT : 펄스 폭 설정과 관계 없이
++    * pcm_Mold_connectionCheck 출력 후 바로 pcm_Mold_NopBacktel을 적용함으로써
++    * 백텔 수신 실패의 경우가 없도록 한다. */
+
+    *((int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING)     = pcm_Mold_connectionCheck;
+-   *((int _XMEM*) HEAR_ADDR_FIFO_PCM_WRITING - 1) = pcm_Mold_NopStandby;
+-   *((int _XMEM*) HEAR_ADDR_FIFO_PCM_WRITING - 2) = pcm_Mold_NopStandby;
++   *((int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING - 1) = pcm_Mold_NopBacktel;
++   *((int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING - 2) = pcm_Mold_NopBacktel;</code></pre>
+
+  <div class="callout important">
+    <div class="callout-title">이유</div>
+    NofM 시 프레임 수가 3으로 고정되는데, 펄스 폭 설정에 따라 FPGA COLA 프로토콜 전송 시간이 <strong>1 프레임으로 끝날 가능성</strong> 존재. 그 경우 <code>pcm_Mold_connectionCheck</code> 직후 슬롯이 <code>NopStandby</code>면 내부기 Backtel 송신을 수신 못 해 에러 발생. <code>NopBacktel</code>로 강제하여 항상 수신 준비 상태 유지.
+  </div>
+
+  <p><strong>Trade-off</strong>: 전력 소비 소폭 증가 (Backtel 회로 가동 시간 2 프레임 추가). 사용자 판단 = "2 프레임 정도는 큰 의미 없음".</p>
+
+  <hr>
+
+  <h2 id="change-2">② stride 정책 명시 (NofM_PCM_Write)</h2>
+  <p><code>src/1__cfx/signalProcessing/stimulationStrategy.c</code>, L390~395 부근.</p>
+
+  <pre><code>    int _XMEM *p_pcmFIFO = (int _XMEM *) HEAR_ADDR_FIFO_PCM_WRITING;
+-   int stride = g_pcmFrameNum_per_channel;
++#if 1
++   int        stride    = g_pcmFrameNum_per_channel;
++#else
++   int        stride    = 3; // IMPORTANT : NofM일 때는 자극 당 3 프레임을 고정 시킴
++#endif</code></pre>
+
+  <div class="callout note">
+    <div class="callout-title">이유</div>
+    초기에 NofM 시 stride를 3으로 직접 고정하려 했으나, 단일 함수 내 하드코딩보다 CM3 측에서 공유메모리 <code>g_pcmFrameNum_per_channel</code>에 3을 쓰는 방향으로 전환. CFX 측은 공유메모리 값을 그대로 읽음 (<code>#if 1</code> 가지). <code>#else</code> 가지는 backup 의도 보존 (재활용 가능성).
+  </div>
+
+  <p><strong>결과 흐름</strong>: CM3 <code>stimulationParaCal.c</code> (⑤)에서 NofM 시 <code>frameNumPerOneChannel = 3</code> → 공유메모리 → CFX가 stride = 3으로 사용.</p>
+
+  <hr>
+
+  <h2 id="change-3">③ 임시 amplitude 벡터 (검증용)</h2>
+  <p><code>src/1__cfx/signalProcessing/stimulationStrategy.c</code>, L78~99 부근. <strong>NOTE: 후속 삭제 필요</strong>.</p>
+
+  <pre><code>        find_freq_rep_value();
+        logarithmMapping();
++
++       /* NOTE: NofM 테스트를 위한 코드. 테스트 후 삭제할 것. */
++#if 1
++       // Phase 0
++       g_pcm_amplitude_level[0]  = 255;
++       g_pcm_amplitude_level[8]  = 200;
++       g_pcm_amplitude_level[1]  = 190;
++       g_pcm_amplitude_level[9]  = 180;
++       g_pcm_amplitude_level[2]  = 170;
++       g_pcm_amplitude_level[10]  = 160;
++       g_pcm_amplitude_level[3]  = 150;
++       g_pcm_amplitude_level[11]  = 140;
++       // Phase 1
++       g_pcm_amplitude_level[4]  = 130;
++       g_pcm_amplitude_level[12]  = 120;
++       g_pcm_amplitude_level[5] = 110;
++       g_pcm_amplitude_level[13] = 100;
++       g_pcm_amplitude_level[6] = 90;
++       g_pcm_amplitude_level[14] = 80;
++       g_pcm_amplitude_level[7] = 70;
++       g_pcm_amplitude_level[15] = 60;
++#endif
+        stimulationStrategy_NofM_Peak_Pick();</code></pre>
+
+  <p><strong>의도</strong>: 출력 파형 검증을 위해 amplitude 16 인덱스에 결정론적 값 강제. Phase 0 = 짝수·홀수 인터리브 8 인덱스, Phase 1 = 나머지 8 인덱스.</p>
+
+  <hr>
+
+  <h2 id="change-4">④ Map3 NofM 강제 (ci_map_init_map_data)</h2>
+  <p><code>src/2__cm3/Gen1_5/FS/ci_map.c</code>, L454~463 부근. <strong>NOTE: 후속 삭제 필요</strong>.</p>
+
+  <pre><code>            // stimulation strategy (1 word)
+            p_map_data[i]-&gt;stimulationStrategy = 1;  // 1: CIS, 2: nOFm
+
++           /* NOTE: NofM 테스트를 위한 코드. 테스트 후 삭제할 것. */
++#if 1
++           if (i == CI_MAP_NUM_3_INDEX)
++           {
++               p_map_data[i]-&gt;stimulationStrategy = 2;  // 1: CIS, 2: nOFm
++           }
++#endif</code></pre>
+
+  <p><strong>의도</strong>: Map3 (Program 3)을 NofM 진입 테스트용으로 강제. 사용자 UI에서 program 3 선택 시 NofM 동작 트리거. <code>ui/20260514_program-change-command</code>의 <code>--prog 3</code> RTT 콘솔 명령과 연계.</p>
+
+  <hr>
+
+  <h2 id="change-5">⑤ NofM 가용 조건 가드 (calculationStimulParaN_cfxShare)</h2>
+  <p><code>src/2__cm3/Cortex-M3-src/signalProcessing/stimulationParaCal.c</code>, L585~602 부근.</p>
+
+  <pre><code>    frameNumPerOneChannel  = calculationNumFramePerOneChannle(p_mapdata-&gt;stimulationPulsePhaseWidth);
+    transferableChannelNum = calculationTransferableChanneNum(frameNumPerOneChannel, p_mapdata-&gt;numFrequencyBand);
+
++   /* IMPORTANT : NofM 사용 시 프레임 수 고정. NofM 가능 여부를 판별하는 기능이 필요함 */
++#if 1
++   if (p_mapdata-&gt;stimulationStrategy == df_stimulationStrategy_nOFm)
++   {
++       if (p_mapdata-&gt;numFrequencyBand &lt; 16)
++       {
++           ci_printe("[PARAM] [NofM] NOT AVAILABLE! 'BAND NUM &lt; 16' !! \r\n");
++       }
++       else
++       {
++           frameNumPerOneChannel  = 3;  // 채널 당 3 프레임
++           transferableChannelNum = 8;  // 1 밀리초에 최대 8 채널 자극
++           ci_printw("[PARAM] [NofM] FRAME NUM PER 1 CH  : 3 \r\n");
++           ci_printw("[PARAM] [NofM] TRANSFERABLE CH NUM : 8 \r\n");
++       }
++   }
++#endif</code></pre>
+
+  <div class="callout important">
+    <div class="callout-title">로직</div>
+    NofM 프레임 수 3 고정 → 1 ms 최대 채널 수 = 8 (=24/3). NofM의 의미(다중 채널 동시 자극)가 살아 있으려면 가용 채널 수 ≥ 16이어야 함.
+    <ul>
+      <li><strong>16 미만</strong>: <code>ci_printe</code>로 에러 출력, 자극 파라미터 자동 보정 안 함 (사용자가 맵 재구성 유도)</li>
+      <li><strong>16 이상</strong>: <code>frameNumPerOneChannel = 3</code>, <code>transferableChannelNum = 8</code> 강제</li>
+    </ul>
+  </div>
+
+  <p><strong>연계</strong>: 본 함수가 공유메모리에 <code>g_pcmFrameNum_per_channel = 3</code>을 쓰는 경로. ② CFX stride와 양방향 핸드셰이크 완성.</p>
+
+  <hr>
+
+  <h2 id="impact">영향 범위</h2>
+  <table>
+    <thead><tr><th>영역</th><th>동작 변경</th></tr></thead>
+    <tbody>
+      <tr><td>NofM 자극 모드 진입</td><td>Map3 자동 NofM (임시)</td></tr>
+      <tr><td>NofM 자극 시 PCM frame stride</td><td>공유메모리 → 3 고정 (CM3 측 강제, CFX 측 그대로 읽음)</td></tr>
+      <tr><td>NofM 시 1 ms 채널 수</td><td>8 채널 (가용 채널 ≥ 16일 때)</td></tr>
+      <tr><td>NofM 시 frequency band 16 미만</td><td>에러 메시지만 출력, 자동 fallback 없음 — 사용자 맵 재구성 필요</td></tr>
+      <tr><td><code>frame_3_perChannel()</code> 백텔 수신</td><td>NopBacktel 2 슬롯 추가 → 항상 수신 준비 (FPGA COLA TX 1 프레임 종료 race 회피)</td></tr>
+      <tr><td>NofM 자극 amplitude (임시)</td><td>Phase 0/1 = 결정론적 16 값 (실 신호처리 무시)</td></tr>
+    </tbody>
+  </table>
+
+  <h2 id="not-affected">영향 받지 않는 영역</h2>
+  <ul>
+    <li><strong>CIS 자극 모드</strong>: <code>stimulationStrategy_CIS()</code> 무변경</li>
+    <li><strong>NofM 본체 알고리즘</strong> (Peak_Pick·Interleaving·Packet): 다니엘 작성·검증 완료, 본 task 미변경</li>
+    <li><strong>Map1·Map2·Map4</strong>: <code>stimulationStrategy = 1</code> (CIS) 유지</li>
+    <li><strong>Backtel 인입 회로 동작</strong> (<code>Enable_backtelCircuit()</code>, <code>Disable_backtelCircuit()</code>): 무변경</li>
+  </ul>
+
+  <hr>
+
+  <h2 id="handshake">CM3 ↔ CFX 공유메모리 핸드셰이크</h2>
+  <pre class="mermaid">
+flowchart LR
+    CM3["CM3<br/>stimulationParaCal.c<br/>(⑤)"] -->|"frameNumPerOneChannel = 3<br/>transferableChannelNum = 8"| SHM["공유메모리<br/>g_pcmFrameNum_per_channel<br/>g_transferableChannelNum_per_1msec"]
+    SHM -->|"stride = g_pcmFrameNum_per_channel"| CFX["CFX<br/>NofM_PCM_Write<br/>(②)"]
+    CFX -->|"PCM FIFO 기록"| FIFO[FIFO 24]
+    FIFO --> ISD[ISD 자극 출력]
+  </pre>
+
+  <p>CM3가 NofM 진입 조건(numFrequencyBand ≥ 16) 충족 시 공유메모리에 <code>3</code>과 <code>8</code>을 쓰고, CFX가 그 값을 stride·한도로 사용. 양방향 핸드셰이크로 매직넘버 하드코딩 회피.</p>
+
+  <nav class="page-nav">
+    <a class="prev" href="mapping.html"><span class="label">← 이전</span>전극·밴드 매핑</a>
+    <a class="next" href="index.html"><span class="label">처음으로 ↑</span>홈</a>
+  </nav>
+
+  <footer class="page-footer">
+    <div>NofM 알고리즘 단축본</div>
+    <div>출처: <code>driver_PCM_liveStimulation.c + stimulationStrategy.c + ci_map.c + stimulationParaCal.c</code></div>
+  </footer>
+</main>
+
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+  const KFONT = '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, sans-serif';
+  window.__mermaidInit = function (theme) {
+    const t = theme === 'mocha' ? 'dark' : 'default';
+    mermaid.initialize({
+      startOnLoad: false, theme: t, securityLevel: 'loose', fontFamily: KFONT,
+      themeVariables: {
+        fontFamily: KFONT, fontSize: '14px',
+        primaryColor: theme === 'mocha' ? '#313244' : '#e6e9ef',
+        primaryTextColor: theme === 'mocha' ? '#cdd6f4' : '#4c4f69',
+        primaryBorderColor: theme === 'mocha' ? '#585b70' : '#acb0be',
+        lineColor: theme === 'mocha' ? '#7f849c' : '#8c8fa1',
+        secondaryColor: theme === 'mocha' ? '#181825' : '#dce0e8',
+        tertiaryColor: theme === 'mocha' ? '#11111b' : '#eff1f5',
+        noteBkgColor: theme === 'mocha' ? '#f9e2af' : '#fff7d6',
+        noteTextColor: '#1e1e2e',
+        noteBorderColor: '#df8e1d'
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true, nodeSpacing: 60, rankSpacing: 70, padding: 16, curve: 'basis' }
+    });
+    document.querySelectorAll('.mermaid').forEach(el => el.removeAttribute('data-processed'));
+    mermaid.run({ querySelector: '.mermaid' });
+  };
+  window.__mermaidInit(document.documentElement.getAttribute('data-theme') || 'latte');
+</script>
+</body>
+</html>
