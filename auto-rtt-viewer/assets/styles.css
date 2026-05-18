@@ -619,6 +619,148 @@ pre.language-python::before    { content: "Python"; color: var(--blue); display:
   border-top-color: var(--overlay0);
 }
 
+/* === Scenario (sequence diagram 대체 — numbered timeline) === */
+.scenario {
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+  counter-reset: sc;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scenario > li {
+  counter-increment: sc;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, var(--mantle), var(--crust));
+  border: 1px solid var(--surface1);
+  border-radius: 8px;
+  align-items: start;
+}
+.scenario > li::before {
+  content: counter(sc, decimal-leading-zero);
+  font-family: "JetBrains Mono", "Fira Code", "D2Coding", monospace;
+  font-size: 0.72rem;
+  color: var(--overlay1);
+  letter-spacing: 0.06em;
+  padding-top: 3px;
+  font-weight: 500;
+}
+.scenario .actors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--subtext0);
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+}
+.scenario .actors .actor {
+  background: var(--surface0);
+  padding: 1px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--surface2);
+  color: var(--text);
+  font-family: "JetBrains Mono", "Fira Code", "D2Coding", monospace;
+  font-size: 0.76rem;
+  font-weight: 500;
+}
+.scenario .actors .arrow {
+  color: var(--lavender);
+  font-size: 0.95rem;
+  font-family: "JetBrains Mono", monospace;
+}
+.scenario .actors .arrow.dashed {
+  color: var(--sapphire);
+}
+.scenario .actors .arrow.self {
+  color: var(--peach);
+  font-size: 1.05rem;
+}
+.scenario .action {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+/* Branch groups (alt / else / loop) */
+.scenario > li.branch {
+  display: block;
+  padding: 18px 14px 14px;
+  background: transparent;
+  border: 1px dashed var(--surface2);
+  border-radius: 10px;
+  position: relative;
+  margin-top: 6px;
+}
+.scenario > li.branch::before {
+  content: attr(data-label);
+  position: absolute;
+  top: -9px;
+  left: 14px;
+  background: var(--base);
+  color: var(--sapphire);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.66rem;
+  padding: 2px 11px;
+  border-radius: 4px;
+  border: 1px solid var(--sapphire);
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.scenario > li.branch > ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: sc-sub;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.scenario > li.branch > ol > li {
+  counter-increment: sc-sub;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 14px;
+  padding: 8px 12px;
+  background: var(--mantle);
+  border-left: 2px solid var(--sapphire);
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0 6px 6px 0;
+  align-items: start;
+}
+.scenario > li.branch > ol > li::before {
+  content: counter(sc) '.' counter(sc-sub);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 0.7rem;
+  color: var(--sapphire);
+  letter-spacing: 0.05em;
+  padding-top: 3px;
+  font-weight: 500;
+}
+
+/* Note (메모/이벤트 표시 — 사용자 액션 같은 외부 트리거) */
+.scenario > li.note {
+  display: block;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px dashed var(--peach);
+  color: var(--peach);
+  font-size: 0.82rem;
+  text-align: center;
+  font-style: italic;
+  border-radius: 8px;
+}
+.scenario > li.note::before {
+  display: none;
+}
+
 /* ====== Images ====== */
 img.figure {
   max-width: 100%;

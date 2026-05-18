@@ -61,39 +61,91 @@
   </p>
 
   <h2 id="scenario">사용 시나리오</h2>
-  <p>아래는 도구가 가정하는 표준 사용 흐름입니다.</p>
-  <pre class="mermaid">
-sequenceDiagram
-    actor User as 사용자
-    participant Tool as auto-rtt-viewer
-    participant JLink as J-Link
-    participant Board as 타겟 보드
-    participant Term as TeraTerm / VSCode 터미널
-
-    User->>Tool: 실행 (프로파일 지정)
-    Tool->>JLink: 연결 시도
-    alt 보드 전원 ON
-        JLink->>Board: SWD/JTAG 연결
-        JLink-->>Tool: RTT 스트림 (upchannel)
-        Tool-->>Term: 실시간 출력
-    else 보드 전원 OFF
-        Tool->>Tool: 짧은 주기로 감지·재시도 (폴링)
-    end
-    Note over Board: 사용자가 보드 전원 OFF
-    JLink-->>Tool: 끊김 이벤트 / 폴링 실패
-    Tool->>Tool: 즉시 재연결 루프 진입
-    Note over Board: 사용자가 보드 전원 ON
-    Tool->>JLink: 재연결 (최대한 빠르게)
-    JLink-->>Tool: RTT 스트림 재개 (초기 부팅 메시지 포함)
-    Tool-->>Term: 출력 재개
-    User->>Term: ASCII 키 입력
-    Term->>Tool: stdin / telnet
-    Tool->>JLink: RTT downchannel 쓰기
-    JLink->>Board: 입력 전달
-    User->>Tool: Ctrl+C
-    Tool->>JLink: 연결 해제
-    Tool-->>User: 종료 (자원 정리 완료)
-  </pre>
+  <p>아래는 도구가 가정하는 표준 사용 흐름입니다. 실선 화살표(→)는 동기 호출, 점선(⤏)은 응답·스트림, ↻는 자기 루프를 의미합니다.</p>
+  <ol class="scenario">
+    <li>
+      <div class="actors"><span class="actor">사용자</span><span class="arrow">→</span><span class="actor">auto-rtt-viewer</span></div>
+      <div class="action">실행 (프로파일 지정)</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow">→</span><span class="actor">J-Link</span></div>
+      <div class="action">연결 시도</div>
+    </li>
+    <li class="branch" data-label="보드 전원 ON">
+      <ol>
+        <li>
+          <div class="actors"><span class="actor">J-Link</span><span class="arrow">→</span><span class="actor">타겟 보드</span></div>
+          <div class="action">SWD/JTAG 연결</div>
+        </li>
+        <li>
+          <div class="actors"><span class="actor">J-Link</span><span class="arrow dashed">⤏</span><span class="actor">auto-rtt-viewer</span></div>
+          <div class="action">RTT 스트림 (upchannel)</div>
+        </li>
+        <li>
+          <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow dashed">⤏</span><span class="actor">TeraTerm / VSCode 터미널</span></div>
+          <div class="action">실시간 출력</div>
+        </li>
+      </ol>
+    </li>
+    <li class="branch" data-label="보드 전원 OFF">
+      <ol>
+        <li>
+          <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow self">↻</span></div>
+          <div class="action">짧은 주기로 감지·재시도 (폴링)</div>
+        </li>
+      </ol>
+    </li>
+    <li class="note">사용자가 보드 전원 OFF</li>
+    <li>
+      <div class="actors"><span class="actor">J-Link</span><span class="arrow dashed">⤏</span><span class="actor">auto-rtt-viewer</span></div>
+      <div class="action">끊김 이벤트 / 폴링 실패</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow self">↻</span></div>
+      <div class="action">즉시 재연결 루프 진입</div>
+    </li>
+    <li class="note">사용자가 보드 전원 ON</li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow">→</span><span class="actor">J-Link</span></div>
+      <div class="action">재연결 (최대한 빠르게)</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">J-Link</span><span class="arrow dashed">⤏</span><span class="actor">auto-rtt-viewer</span></div>
+      <div class="action">RTT 스트림 재개 (초기 부팅 메시지 포함)</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow dashed">⤏</span><span class="actor">TeraTerm / VSCode 터미널</span></div>
+      <div class="action">출력 재개</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">사용자</span><span class="arrow">→</span><span class="actor">TeraTerm / VSCode 터미널</span></div>
+      <div class="action">ASCII 키 입력</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">TeraTerm / VSCode 터미널</span><span class="arrow">→</span><span class="actor">auto-rtt-viewer</span></div>
+      <div class="action">stdin / telnet</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow">→</span><span class="actor">J-Link</span></div>
+      <div class="action">RTT downchannel 쓰기</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">J-Link</span><span class="arrow">→</span><span class="actor">타겟 보드</span></div>
+      <div class="action">입력 전달</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">사용자</span><span class="arrow">→</span><span class="actor">auto-rtt-viewer</span></div>
+      <div class="action">Ctrl+C</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow">→</span><span class="actor">J-Link</span></div>
+      <div class="action">연결 해제</div>
+    </li>
+    <li>
+      <div class="actors"><span class="actor">auto-rtt-viewer</span><span class="arrow dashed">⤏</span><span class="actor">사용자</span></div>
+      <div class="action">종료 (자원 정리 완료)</div>
+    </li>
+  </ol>
 
   <h2 id="who">누가 쓰는가</h2>
   <p>도구는 다음 작업을 자주 반복하는 임베디드 개발자를 1차 사용자로 가정합니다.</p>
